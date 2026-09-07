@@ -47,3 +47,7 @@
 - `mold_fate`: given_viscount | drowned | kept
 - `child_burial`: helped | refused | deferred
 - `act1_beat`: fontfroide | road | parish | goldsmith | mold | ferry | narbonne_gate
+
+## Act I closer (added)
+- After ferry: **Narbonne agent** — delivery branches on `seal_intact` / `party_is_forger`, `mold_fate`, `pilgrim_trust`.
+- Parish beat (Father Ramon) sits between ambush and mold; see `03-parish-narbonne.md`.

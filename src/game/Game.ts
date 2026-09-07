@@ -254,6 +254,14 @@ export class Game {
       this.startDialogue('bandit_captain');
       return;
     }
+    if (n.id === 'parish') {
+      if (!this.flags.ambush_done) {
+        this.toast('Clear or slip the badge ambush first.');
+        return;
+      }
+      this.startDialogue('priest_ramon');
+      return;
+    }
     if (n.id === 'ferry') {
       if (this.flags.ferry_done) {
         this.toast('Rope cut. Crossing open.');
@@ -271,12 +279,24 @@ export class Game {
         this.toast('Clear or slip the badge ambush first.');
         return;
       }
+      if (!this.flags.talked_parish && !this.flags.child_burial) {
+        this.toast('Father Ramon’s porch is still waiting — then the mold.');
+        return;
+      }
       if (this.flags.mold_fate) {
         this.startDialogue('mold_choice');
         // will open 'after'
         return;
       }
       this.startDialogue('mold_choice');
+      return;
+    }
+    if (n.id === 'narbonne') {
+      if (!this.flags.ferry_done) {
+        this.toast('Cut the ferry rope first — then deliver the letter.');
+        return;
+      }
+      this.startDialogue('narbonne_agent');
       return;
     }
     if (n.id === 'mairia' && !this.flags.chest_carrier) {
@@ -295,6 +315,12 @@ export class Game {
     if (id === 'cellarer' && this.flags.talked_cellarer) startId = 'after';
     if (id === 'pilgrim_mairia' && this.flags.talked_mairia) startId = 'after';
     if (id === 'mold_choice' && this.flags.mold_fate) startId = 'after';
+    if (id === 'priest_ramon' && this.flags.talked_parish) startId = 'after';
+    if (id === 'narbonne_agent') {
+      if (this.flags.talked_narbonne) startId = 'after';
+      else if (this.flags.party_is_forger || !this.flags.seal_intact) startId = 'forger';
+      else startId = 'clean';
+    }
     this.dialogueNode = tree.find((n) => n.id === startId) ?? tree[0];
     this.screen = 'dialogue';
     this.drawDialogue();
@@ -438,7 +464,7 @@ export class Game {
       if (effect === 'slip_draille') this.adjustTrust(0);
       else this.adjustTrust(1);
       this.flags.act1_beat = 'after_bandits';
-      this.storyBeat = 'Bandits cleared or slipped. Next: settle the mold with the viscount’s rider.';
+      this.storyBeat = 'Bandits cleared or slipped. Next: Father Ramon’s porch, then the mold.';
       this.toast(effect === 'slip_draille' ? 'Slipped the draille.' : 'Bandits withdraw.');
       this.refreshObjective();
       this.persist();
@@ -475,9 +501,120 @@ export class Game {
       return 'close';
     }
 
+    if (
+      effect === 'child_burial_helped' ||
+      effect === 'child_burial_refused' ||
+      effect === 'child_burial_deferred'
+    ) {
+      const fate =
+        effect === 'child_burial_helped'
+          ? 'helped'
+          : effect === 'child_burial_refused'
+            ? 'refused'
+            : 'deferred';
+      this.flags.child_burial = fate;
+      this.flags.talked_parish = true;
+      this.flags.act1_beat = 'parish';
+      if (fate === 'helped') {
+        this.adjustTrust(1);
+        this.toast('Mairia: They saw. The column eats quieter tonight.');
+      } else if (fate === 'refused') {
+        this.adjustTrust(-1);
+        this.toast('Catalana: That porch will talk in every village to Narbonne.');
+      } else {
+        this.toast('Burial marked deferred — Act II debt.');
+      }
+      this.storyBeat = 'Parish porch settled. Next: settle the mold with the viscount’s rider.';
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'ferry_alt_check') {
+      return 'continue';
+    }
+
     if (effect === 'start_ferry') {
       this.startCombat('ferry');
       return 'combat';
+    }
+
+    if (effect === 'start_ferry_sheepgate') {
+      const trust = Number(this.flags.pilgrim_trust) || 0;
+      if (trust >= 2) {
+        this.startCombat('ferry', { shoveWater: true });
+        return 'combat';
+      }
+      this.toast('The sheep-gate won’t open — the column won’t vouch for you.');
+      this.startCombat('ferry');
+      return 'combat';
+    }
+
+    if (effect === 'mold_to_agent') {
+      this.inventory = this.inventory.filter((i) => i.id !== 'seal_mold');
+      return 'continue';
+    }
+
+    if (effect === 'narbonne_delivered') {
+      // Keep letter_damaged if forger path already stained the wax.
+      if (this.flags.narbonne_outcome !== 'letter_damaged') {
+        this.flags.narbonne_outcome = 'delivered';
+      }
+      this.flags.talked_narbonne = true;
+      return 'continue';
+    }
+    if (effect === 'narbonne_letter_damaged') {
+      this.flags.narbonne_outcome = 'letter_damaged';
+      this.flags.talked_narbonne = true;
+      return 'continue';
+    }
+    if (effect === 'narbonne_refused_forger') {
+      this.flags.narbonne_outcome = 'refused_forger';
+      this.flags.talked_narbonne = true;
+      this.flags.act1_beat = 'narbonne_gate';
+      this.storyBeat =
+        'Gate kept you out. Column moved anyway. Act I ends ugly — priory still ahead.';
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+    if (effect === 'narbonne_deferred_gate') {
+      this.flags.narbonne_outcome = 'deferred_gate';
+      this.flags.talked_narbonne = true;
+      this.flags.act1_beat = 'narbonne_gate';
+      this.storyBeat =
+        'You rode past Narbonne. The legate may already be north. Priory is the only road left.';
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'end_act1') {
+      this.flags.talked_narbonne = true;
+      this.flags.act1_beat = 'narbonne_gate';
+      const outcome = String(this.flags.narbonne_outcome || '');
+      const trust = Number(this.flags.pilgrim_trust) || 0;
+      if (outcome === 'delivered') {
+        this.storyBeat =
+          trust >= 2
+            ? 'Letter delivered. Pilgrims clear of the magazine road. Corbières priory waits (Act II).'
+            : 'Letter delivered. Road behind you is hostile. Corbières priory waits.';
+      } else if (outcome === 'letter_damaged') {
+        this.storyBeat =
+          'Letter stained but names ride. You are known as a peeker. Priory waits.';
+      } else if (outcome === 'refused_forger') {
+        this.storyBeat =
+          'Gate kept you out. Column moved anyway. Act I ends ugly — priory still ahead.';
+      } else if (outcome === 'deferred_gate') {
+        this.storyBeat =
+          'You rode past Narbonne. The legate may already be north. Priory is the only road left.';
+      } else {
+        this.storyBeat = 'Act I frame closed at Narbonne. Corbières priory waits (Act II).';
+      }
+      this.toast('Act I frame complete.');
+      this.refreshObjective();
+      this.persist();
+      return 'close';
     }
 
     return 'close';
@@ -491,12 +628,17 @@ export class Game {
     obj.innerHTML = `${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust}</span>`;
   }
 
-  private startCombat(encounter: CombatEncounter): void {
+  private startCombat(
+    encounter: CombatEncounter,
+    opts?: { shoveWater?: boolean }
+  ): void {
+    const shoveWater =
+      opts?.shoveWater !== undefined ? opts.shoveWater : encounter === 'ferry';
     this.combat = new CombatSession(this.party, {
       encounter,
       sealIntact: !!this.flags.seal_intact,
       hasLoft: encounter === 'ambush' ? !!this.flags.has_loft_ambush : true,
-      shoveWater: encounter === 'ferry',
+      shoveWater,
       pilgrimTrust: Number(this.flags.pilgrim_trust) || 0,
     });
     this.screen = 'combat';
@@ -586,14 +728,14 @@ export class Game {
           qty: 1,
         });
         this.flags.act1_beat = 'after_bandits';
-        this.storyBeat = 'Bandits cleared. Next: settle the mold with the viscount’s rider.';
+        this.storyBeat = 'Bandits cleared. Next: Father Ramon’s porch, then the mold.';
         this.toast('Ambush broken.');
       } else {
         this.flags.ferry_done = true;
         this.world?.hideNpc('ferry', true);
         this.flags.act1_beat = 'ferry';
         this.storyBeat =
-          'Ferry rope cut. Letter toward Narbonne — Act I frame complete (priory deferred).';
+          'Ferry rope cut. Deliver the letter to the Narbonne agent.';
         this.toast('Crossing freed.');
       }
       this.refreshObjective();

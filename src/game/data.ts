@@ -85,6 +85,10 @@ export const DEFAULT_FLAGS: Record<string, boolean | string | number> = {
   talked_mairia: false,
   has_loft_ambush: false,
   warn_seal_break: false,
+  child_burial: '',
+  narbonne_outcome: '',
+  talked_parish: false,
+  talked_narbonne: false,
 };
 
 export const DIALOGUES: Record<string, DialogueNode[]> = {
@@ -209,15 +213,149 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
       choices: [{ text: '(Leave)', effect: 'end' }],
     },
   ],
+  priest_ramon: [
+    {
+      id: 'start',
+      speaker: 'Father Ramon',
+      text: 'Bells stay down. Burial ground locked until a legate says the word. The child is in the porch. Do not ask me for a mass I cannot say.',
+      choices: [
+        { text: '[Clerk] Record a lay burial. Ink is not a sacrament.', next: 'lay_burial' },
+        { text: '[Surgeon] Dig outside the wall before the street sours.', next: 'outside' },
+        { text: '[Convers] I have a shovel. Say where.', next: 'lay_burial' },
+        { text: 'We cannot linger.', next: 'refuse' },
+      ],
+    },
+    {
+      id: 'lay_burial',
+      speaker: 'Father Ramon',
+      text: 'Write it under my name if you must. Peire — dusk, quiet, no bell. The column is watching from the road.',
+      choices: [
+        { text: 'We dig at dusk.', effect: 'child_burial_helped' },
+        { text: 'Mark it deferred — we return after the ferry.', effect: 'child_burial_deferred' },
+      ],
+    },
+    {
+      id: 'outside',
+      speaker: 'Father Ramon',
+      text: 'Outside the wall is still earth. Elias, keep the linen boiled. If the pilgrims sing, stop them.',
+      choices: [{ text: 'Quiet burial. Then the river.', effect: 'child_burial_helped' }],
+    },
+    {
+      id: 'refuse',
+      speaker: 'Father Ramon',
+      text: 'Then keep your sealed letters. Roads remember who passed a porch like this with dry hands.',
+      choices: [
+        { text: '(Leave)', effect: 'child_burial_refused' },
+        { text: 'Wait — we dig. No mass.', next: 'lay_burial' },
+      ],
+    },
+    {
+      id: 'after',
+      speaker: 'Father Ramon',
+      text: 'The porch is empty. Go. The Aude does not wait on clerks.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
   ferry_rope: [
     {
       id: 'start',
-      speaker: 'Ferry Rope',
-      text: '[PLACEHOLDER] Rope taut across the Aude watch. River men hold the far latch. Formation: Sergeant Holds while Convers Cuts.',
+      speaker: 'Ferryman Peire',
+      text: 'Rope’s taut and watched. Far latch is theirs. You want the column across, Sergeant holds the planks while the Convers cuts — not the other way round.',
       choices: [
-        { text: 'Form up — cut under Hold.', effect: 'start_ferry' },
-        { text: 'Not yet.', effect: 'end' },
+        { text: 'Form up — Hold, then Cut.', effect: 'start_ferry' },
+        { text: '[Guide] There’s a sheep-gate downriver if trust buys silence.', next: 'alt', effect: 'ferry_alt_check' },
       ],
+    },
+    {
+      id: 'alt',
+      speaker: 'Ferryman Peire',
+      text: 'Sheep-gate floods after rain. With friends in the column, maybe. Without them, you swim with the letter.',
+      choices: [
+        { text: 'We take the rope fight.', effect: 'start_ferry' },
+        { text: 'Try the sheep-gate.', effect: 'start_ferry_sheepgate' },
+      ],
+    },
+  ],
+  narbonne_agent: [
+    {
+      id: 'clean',
+      speaker: 'Agent (Narbonne)',
+      text: 'Wax unbroken. Good. Names first — goldsmith’s already river-meat. Who paid the die, and who copied the chancery hand?',
+      choices: [
+        { text: 'Mold drowned. Trail ends in the Aude.', next: 'ask_mold_drowned' },
+        { text: 'Mold to the viscount. He rides soft.', next: 'ask_mold_given' },
+        { text: 'We kept the mold. Proof for your table.', next: 'ask_mold_kept' },
+      ],
+    },
+    {
+      id: 'forger',
+      speaker: 'Agent (Narbonne)',
+      text: 'That seal has been open. You smell like every clerk who thought peeking was clever. Speak carefully — or the gate keeps the letter and not you.',
+      choices: [
+        { text: 'We broke it to verify the hand. Here is what we read.', next: 'forger_confess' },
+        { text: 'The bag was forced on the road. The words are still true.', next: 'forger_lie' },
+        { text: '[Clerk] Refuse the hand-off. We ride past if the legate has gone north.', effect: 'narbonne_deferred_gate' },
+      ],
+    },
+    {
+      id: 'ask_mold_drowned',
+      speaker: 'Agent (Narbonne)',
+      text: 'Then nobody mints from that die again. Pilgrims?',
+      choices: [{ text: 'Report the column.', next: 'pilgrims' }],
+    },
+    {
+      id: 'ask_mold_given',
+      speaker: 'Agent (Narbonne)',
+      text: 'Viscount has a leash. He will use it. You bought a friend who collects.',
+      choices: [{ text: 'Report the column.', next: 'pilgrims' }],
+    },
+    {
+      id: 'ask_mold_kept',
+      speaker: 'Agent (Narbonne)',
+      text: 'Put it on the table. If the die matches the false rim, Arnau, you just bought us a hanging — theirs or yours.',
+      choices: [{ text: 'Hand over the mold and the letter.', next: 'pilgrims', effect: 'mold_to_agent' }],
+    },
+    {
+      id: 'forger_confess',
+      speaker: 'Agent (Narbonne)',
+      text: 'Honesty keeps you breathing. The letter is stained. I can still ride the names north if the pilgrims are off the killing ground.',
+      choices: [{ text: 'Report the column.', next: 'pilgrims', effect: 'narbonne_letter_damaged' }],
+    },
+    {
+      id: 'forger_lie',
+      speaker: 'Agent (Narbonne)',
+      text: 'Bandits who open papal wax and leave the courier standing? Try again.',
+      choices: [
+        { text: 'Fine — we peeked.', next: 'forger_confess' },
+        { text: 'Then keep your gate. We move the column anyway.', effect: 'narbonne_refused_forger' },
+      ],
+    },
+    {
+      id: 'pilgrims',
+      speaker: 'Agent (Narbonne)',
+      text: 'The west road is a magazine if a box leads them. Where is Mairia’s column?',
+      choices: [
+        { text: 'With us — off the killing ground.', next: 'close_good', effect: 'narbonne_delivered' },
+        { text: 'Scattered. We chose the bag over the mule.', next: 'close_cold', effect: 'narbonne_delivered' },
+      ],
+    },
+    {
+      id: 'close_good',
+      speaker: 'Agent (Narbonne)',
+      text: 'Act I ends here: letter in, pilgrims breathing, priory still waiting in the Corbières. Do not open another seal for sport.',
+      choices: [{ text: '(End Act I frame)', effect: 'end_act1' }],
+    },
+    {
+      id: 'close_cold',
+      speaker: 'Agent (Narbonne)',
+      text: 'Letter in. Road hostile. You will feel that in the hills. Priory next — if you still have five walking.',
+      choices: [{ text: '(End Act I frame)', effect: 'end_act1' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Agent (Narbonne)',
+      text: 'Gate business is done. The Corbières wait.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
     },
   ],
 };
@@ -252,6 +390,15 @@ export const NPCS = [
     combat: true,
   },
   {
+    id: 'parish',
+    name: 'Father Ramon',
+    color: 0x5a5848,
+    x: 0.8,
+    z: -2.6,
+    dialogueId: 'priest_ramon',
+    hint: 'Parish porch',
+  },
+  {
     id: 'mold',
     name: 'Viscount’s Rider',
     color: 0x4a4858,
@@ -269,5 +416,14 @@ export const NPCS = [
     dialogueId: 'ferry_rope',
     hint: 'Ferry crossing',
     combat: true,
+  },
+  {
+    id: 'narbonne',
+    name: 'Narbonne Agent',
+    color: 0x3a4858,
+    x: -1.2,
+    z: -6.2,
+    dialogueId: 'narbonne_agent',
+    hint: 'Deliver the letter',
   },
 ] as const;

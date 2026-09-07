@@ -45,6 +45,11 @@ export class CombatSession {
   ropeCut = false;
   /** Ferry win when Convers cuts rope while Sergeant held this round or last. */
   sergeantHeldThisRound = false;
+  /** Front +1 def from Brace wagon; cleared at round end like Hold. */
+  wagonBraced = false;
+  /** Ferry: all River Watch down — Cut rope no longer needs Hold. */
+  ferryWatchCleared = false;
+  guideBoltHintShown = false;
   round = 1;
 
   constructor(party: PartyMember[], opts: CombatOptions) {
@@ -206,12 +211,18 @@ export class CombatSession {
           },
           { id: 'brace_wagon', label: 'Brace wagon', enabled: true },
         ];
-      case 'guide':
+      case 'guide': {
+        const boltOk = flankOk && this.living('enemies').length > 0;
+        if (!flankOk && !this.guideBoltHintShown) {
+          this.guideBoltHintShown = true;
+          this.log.push('no loft angle yet');
+        }
         return [
-          { id: 'bolt', label: 'Bolt', enabled: flankOk && this.living('enemies').length > 0 },
+          { id: 'bolt', label: 'Bolt', enabled: boltOk },
           { id: 'slip', label: 'Slip → loft', enabled: this.hasLoft && !inLoft },
           { id: 'point', label: 'Point (expose badges)', enabled: this.encounter === 'ambush' && !this.badgesExposed },
         ];
+      }
       case 'clerk':
         return [
           {
@@ -231,7 +242,8 @@ export class CombatSession {
           {
             id: 'stabilize',
             label: 'Stabilize',
-            enabled: this.allies.some((x) => x.bleeding && !x.downed),
+            // Always enabled so the turn can advance when nobody is bleeding (softlock fix).
+            enabled: true,
           },
           {
             id: 'drag',
@@ -248,7 +260,9 @@ export class CombatSession {
 
   private frontDefBonus(): number {
     const sarge = this.allies.find((a) => a.memberId === 'sergeant');
-    return sarge?.holding ? 2 : 0;
+    let bonus = sarge?.holding ? 2 : 0;
+    if (this.wagonBraced) bonus += 1;
+    return bonus;
   }
 
   private afterPlayerAction(): void {
@@ -267,9 +281,10 @@ export class CombatSession {
       this.checkEnd();
     }
     if (!this.over) {
-      // clear hold at end of full round after enemy+bleed
+      // clear Hold + Brace at end of full round after enemy+bleed
       for (const a of this.allies) a.holding = false;
       this.sergeantHeldThisRound = false;
+      this.wagonBraced = false;
       this.round += 1;
       this.turn = 'player';
       this.activeAllyId = this.nextAllyId(null);
@@ -328,13 +343,17 @@ export class CombatSession {
         break;
       }
       case 'cut_rope': {
-        if (!this.sergeantHeldThisRound) {
+        if (!this.sergeantHeldThisRound && !this.ferryWatchCleared) {
           this.log.push('Rope frays — need Sergeant Hold before Cut rope lands clean.');
           // still spend the action; partial progress
           break;
         }
         this.ropeCut = true;
-        this.log.push(`${actor.name} Cuts the ferry rope under Sergeant Hold — crossing frees.`);
+        this.log.push(
+          this.ferryWatchCleared && !this.sergeantHeldThisRound
+            ? `${actor.name} Cuts the ferry rope — watch down, crossing frees.`
+            : `${actor.name} Cuts the ferry rope under Sergeant Hold — crossing frees.`
+        );
         this.victory = true;
         this.over = true;
         return;
@@ -345,10 +364,8 @@ export class CombatSession {
         break;
       }
       case 'brace_wagon': {
-        for (const a of this.allies) {
-          if (a.slot === 'frontL' || a.slot === 'frontR') a.def += 1;
-        }
-        this.log.push(`${actor.name} Braces the wagon — front hardens.`);
+        this.wagonBraced = true;
+        this.log.push(`${actor.name} Braces the wagon — front hardens this round.`);
         break;
       }
       case 'bolt': {
@@ -393,7 +410,10 @@ export class CombatSession {
       }
       case 'stabilize': {
         const bleed = this.allies.find((x) => x.bleeding && !x.downed);
-        if (!bleed) break;
+        if (!bleed) {
+          this.log.push(`${actor.name} tends the kit — no one needs the iron.`);
+          break;
+        }
         bleed.bleeding = false;
         bleed.bleedTicks = 0;
         this.log.push(`${actor.name} Stabilizes ${bleed.name} — bleeding stopped.`);
@@ -455,19 +475,28 @@ export class CombatSession {
   }
 
   private checkEnd(): void {
-    if (this.encounter === 'ferry' && this.ropeCut) {
-      this.over = true;
-      this.victory = true;
+    if (this.encounter === 'ferry') {
+      if (this.ropeCut) {
+        this.over = true;
+        this.victory = true;
+        return;
+      }
+      // Kill-all stresses/opens Cut but does not end the fight — victory is ropeCut only.
+      if (!this.living('enemies').length && !this.ferryWatchCleared) {
+        this.ferryWatchCleared = true;
+        this.log.push('River watch down — rope still binds the crossing. Cut it.');
+      }
+      if (!this.living('allies').length) {
+        this.over = true;
+        this.victory = false;
+        this.log.push('Formation collapses in the mud.');
+      }
       return;
     }
     if (!this.living('enemies').length) {
       this.over = true;
       this.victory = true;
-      this.log.push(
-        this.encounter === 'ambush'
-          ? 'Ambush broken. Borrowed badges lie in the mud.'
-          : 'River watch cleared — but the rope still mattered.'
-      );
+      this.log.push('Ambush broken. Borrowed badges lie in the mud.');
     } else if (!this.living('allies').length) {
       this.over = true;
       this.victory = false;

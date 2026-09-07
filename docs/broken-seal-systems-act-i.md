@@ -37,10 +37,10 @@ Replace Attack/Unmake/Defend fantasy loop.
 | Job | Actions |
 |---|---|
 | Sergeant | **Hold line** (+def to front rank this round), **Thrust** (melee front), **Shove** (push foe out of doorway / into water if flag) |
-| Convers | **Club**, **Cut rope** / **Kick latch** (scene interact when flagged), **Brace wagon** |
+| Convers | **Club**, **Cut rope** / **Kick latch** (scene interact when flagged), **Brace wagon** (+1 front def this round; clears like Hold) |
 | Guide | **Bolt** (needs loft or flank clear), **Slip** (leave formation → loft if available), **Point** (reveal borrowed badges — Clerk can then Call out) |
 | Clerk | **Call out** (if badges exposed: one foe wavers / skips attack), **Staff** (weak melee), **Show seal** (risk: if `seal_intact` and scene allows, pilgrims or foes hesitate — once per fight) |
-| Surgeon | **Stabilize** (clear `bleeding` on one ally; uses the turn), **Drag** (pull downed ally to rear) |
+| Surgeon | **Stabilize** (clear `bleeding` on one ally; uses the turn — if nobody bleeding, still spends turn: *no one needs the iron*), **Drag** (pull downed ally to rear) |
 
 No MP. No holy damage. “Skill” = job + position + scene flag.
 
@@ -51,7 +51,7 @@ No MP. No holy damage. “Skill” = job + position + scene flag.
 
 ### Act I encounters (wire these)
 1. **Borrowed-badge ambush** (road) — 2 bandits front; Guide can Point badges; Clerk Call out; optional loft later.
-2. **Ferry rope** — Convers Cut rope is the win condition under pressure; Sergeant Holds while column crosses.
+2. **Ferry rope** — Convers **Cut rope** is the **only** win (`ropeCut`); wiping River Watch opens/stresses Cut (no Hold needed) but does not end the fight. Sergeant Holds while column crosses.
 3. **Priory deferred to Act II** — do not build yet.
 
 ## Seal system
@@ -101,4 +101,4 @@ Collision / click targets (orbit cam):
 - Guide loft/bolt or Point→Clerk Call out is a visible alternate line.
 - Breaking the true seal is possible and permanently worsens a later beat.
 - Pilgrim trust can be lost and the ferry feels it.
-- Surgeon Stabilize is the only “heal,” and it costs a turn / between-scene time.
+- Surgeon Stabilize is the only “heal,” and it costs a turn / between-scene time (always available so the surgeon turn cannot softlock).

@@ -136,7 +136,7 @@ export class Game {
     this.toast(msg);
   }
 
-  private enterHub(x: number, z: number): void {
+  private async enterHub(x: number, z: number): Promise<void> {
     this.screen = 'hub';
     this.clearUi();
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -162,6 +162,9 @@ export class Game {
     this.running = true;
     this.last = performance.now();
     requestAnimationFrame((t) => this.loop(t));
+    // Swap procedural placeholders for Kenney GLTF props when ready
+    await this.world.ready;
+    if (this.flags.wraithDead) this.world.hideNpc('wraith', true);
   }
 
   private renderHud(): void {

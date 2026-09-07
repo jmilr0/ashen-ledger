@@ -43,4 +43,17 @@ You play **Rowan Vale**, debt-marked investigator. Speak with **Dockhand Brin**,
 
 ## Tech
 
-Vite + TypeScript + Three.js. Placeholder geometry and colors by design.
+Vite + TypeScript + Three.js. Merrowgate hub uses Kenney CC0 low-poly GLTF props with improved lighting (hemisphere + moon directional soft shadows, warm lantern point lights, exponential fog, ACES tone mapping). Procedural capsules remain as fallback if models fail to load.
+
+## Assets & licenses
+
+All 3D models are **CC0 1.0** by [Kenney](https://kenney.nl) (attribution not required; credited with appreciation):
+
+| Pack | Use in slice |
+|------|----------------|
+| [Fantasy Town Kit](https://kenney.nl/assets/fantasy-town-kit) | Walls, roofs, stalls, lantern, cart, fountain |
+| [Graveyard Kit](https://kenney.nl/assets/graveyard-kit) | Ghost (Blot-Wraith), crypt, lightposts, fence, pine, bench |
+| [Blocky Characters](https://kenney.nl/assets/blocky-characters) | Player + NPC humanoids |
+| [Pirate Kit](https://kenney.nl/assets/pirate-kit) | Dock, boat, barrels, crates |
+
+Curated GLBs live under `public/models/` with license copies and `CREDITS.txt`.

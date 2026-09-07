@@ -1,0 +1,7 @@
+3D assets (CC0 1.0 Universal) by Kenney — https://kenney.nl
+Packs used (subset of GLB models + textures):
+  - Fantasy Town Kit 2.0 — https://kenney.nl/assets/fantasy-town-kit
+  - Graveyard Kit 5.0 — https://kenney.nl/assets/graveyard-kit
+  - Blocky Characters 2.0 — https://kenney.nl/assets/blocky-characters
+  - Pirate Kit — https://kenney.nl/assets/pirate-kit
+Attribution not required under CC0; credited here with appreciation.

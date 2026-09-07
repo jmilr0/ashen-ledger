@@ -1,0 +1,12 @@
+variant=a
+weapon=spear
+badge=dull_red_cross_on_brass
+body_height_m=1.7200
+body_width_x_m=0.5600
+overall_height_m=2.1560
+overall_width_x_m=0.5787
+depth_y_m=0.4658
+tris=6134
+capsule_diameter_m=0.60
+origin=feet
+style=dirt-and-mail Broken Seal original

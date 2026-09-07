@@ -1,0 +1,8 @@
+height_m=1.4700
+width_x_m=2.4180
+depth_y_m=0.4140
+tris=3308
+objects=Ferry_Hardware,Ferry_HitchWrap,Ferry_PostAssembly,Ferry_Rope
+collider_radius_m=0.55
+mesh_vs_collider_note=~1.2x forgiving RMB
+rope_hitch_z_m~=1.10

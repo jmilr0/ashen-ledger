@@ -1,0 +1,13 @@
+variant=b
+weapon=cudgel
+badge=faded_blue_cross_on_pewter
+body_height_m=1.7200
+body_width_x_m=0.5600
+overall_height_m=1.7200
+overall_width_x_m=0.6459
+depth_y_m=0.5148
+tris=6074
+capsule_diameter_m=0.60
+origin=feet
+style=dirt-and-mail Broken Seal original
+note=overall_width includes cudgel overhang; body clamped to 0.56

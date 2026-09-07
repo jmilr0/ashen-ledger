@@ -1,6 +1,7 @@
 import type { SaveData } from './types';
 
-const KEY = 'ashen-ledger-save-v1';
+/** Repo stays ashen-ledger; in-game title is The Broken Seal. */
+const KEY = 'broken-seal-save-v1';
 
 export function saveGame(data: SaveData): void {
   localStorage.setItem(KEY, JSON.stringify(data));

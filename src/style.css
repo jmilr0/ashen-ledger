@@ -32,10 +32,10 @@ html, body, #app {
 #title-screen {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 1.25rem;
-  background: radial-gradient(ellipse at 50% 30%, #2a1a12 0%, #0a0908 70%);
+  background: radial-gradient(ellipse at 50% 30%, #2a3038 0%, #0a0908 70%);
 }
 #title-screen h1 {
-  font-size: clamp(2.4rem, 6vw, 4rem); color: #c9a06a;
+  font-size: clamp(2.4rem, 6vw, 4rem); color: #c8b898;
   text-shadow: 0 2px 20px rgba(160, 80, 40, 0.45);
 }
 #title-screen .tagline {
@@ -113,3 +113,7 @@ html, body, #app {
 #toast.show { opacity: 1; }
 
 .hidden { display: none !important; }
+
+.enemy-chip.active-ally { border-color: #a09060; background: #2a2820; }
+.stub-note { opacity: 0.55; font-size: 0.75rem; }
+.combat-meta { margin-bottom: 0.45rem; opacity: 0.8; }

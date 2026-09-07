@@ -1,7 +1,12 @@
-3D assets (CC0 1.0 Universal) by Kenney — https://kenney.nl
-Packs used (subset of GLB models + textures):
+3D assets for Ashen Ledger
+
+Characters (original Blender-authored smooth low-poly fantasy humanoids):
+  - Rowan Vale, Mirelle Quill, Dockhand Brin
+  - Created with Blender 4.3 for this project (tools/make_characters.py)
+  - Not Kenney Blocky Characters (removed by request)
+
+Environment props (CC0 1.0 Universal) by Kenney — https://kenney.nl
   - Fantasy Town Kit 2.0 — https://kenney.nl/assets/fantasy-town-kit
-  - Graveyard Kit 5.0 — https://kenney.nl/assets/graveyard-kit
-  - Blocky Characters 2.0 — https://kenney.nl/assets/blocky-characters
+  - Graveyard Kit 5.0 — https://kenney.nl/assets/graveyard-kit (incl. ghost for Blot-Wraith)
   - Pirate Kit — https://kenney.nl/assets/pirate-kit
 Attribution not required under CC0; credited here with appreciation.

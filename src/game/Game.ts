@@ -29,6 +29,10 @@ export class Game {
   private last = 0;
   private running = false;
   private pendingInteract: (typeof NPCS)[number] | null = null;
+  private orbitDragging = false;
+  private lastPointerX = 0;
+  private lastPointerY = 0;
+  private canvasHandlersBound = false;
 
   constructor() {
     this.ui = document.getElementById('ui-root')!;
@@ -48,7 +52,18 @@ export class Game {
         else if (this.screen === 'hub') this.showParty();
       }
       if (e.key === 'e' || e.key === 'E') {
+        // E is interact backup (also used historically); Q/E reserved for camera — use F for interact
         if (this.screen === 'hub') this.tryInteract();
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        if (this.screen === 'hub') this.tryInteract();
+      }
+      if (e.key === 'q' || e.key === 'Q') {
+        if (this.screen === 'hub') this.world?.orbit(-0.18);
+      }
+      if (e.key === 'r' || e.key === 'R') {
+        // R rotates the other way (E kept as interact backup)
+        if (this.screen === 'hub') this.world?.orbit(0.18);
       }
       if (e.key === 'Escape') {
         if (this.screen === 'party' || this.screen === 'inventory') this.closeOverlay();
@@ -93,7 +108,7 @@ export class Game {
         <button class="btn primary" id="btn-new">New Investigation</button>
         <button class="btn" id="btn-continue" ${hasSave() ? '' : 'disabled'}>Continue</button>
       </div>
-      <p class="hint">Click to move · E interact · I inventory · C party · Ctrl+S save</p>
+      <p class="hint">LMB move · RMB talk / drag orbit · Q/R rotate camera · E/F interact · I inv · C party · Ctrl+S save</p>
     `;
     this.ui.appendChild(el);
     el.querySelector('#btn-new')!.addEventListener('click', () => this.newGame());
@@ -136,6 +151,56 @@ export class Game {
     this.toast(msg);
   }
 
+  private bindCanvasInput(canvas: HTMLCanvasElement): void {
+    if (this.canvasHandlersBound) return;
+    this.canvasHandlersBound = true;
+
+    canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+    canvas.addEventListener('pointerdown', (ev) => {
+      if (this.screen !== 'hub' || !this.world) return;
+      if (ev.button === 2) {
+        // Right-click: interact with NPC under cursor, else start orbit drag
+        const npc = this.world.pickNpc(ev.clientX, ev.clientY);
+        if (npc) {
+          this.openNpc(npc);
+          return;
+        }
+        this.orbitDragging = true;
+        this.lastPointerX = ev.clientX;
+        this.lastPointerY = ev.clientY;
+        canvas.setPointerCapture(ev.pointerId);
+        return;
+      }
+      if (ev.button === 0) {
+        const pt = this.world.screenToGround(ev.clientX, ev.clientY);
+        if (pt) this.world.moveToWorld(pt);
+      }
+    });
+
+    canvas.addEventListener('pointermove', (ev) => {
+      if (!this.orbitDragging || !this.world || this.screen !== 'hub') return;
+      const dx = ev.clientX - this.lastPointerX;
+      const dy = ev.clientY - this.lastPointerY;
+      this.lastPointerX = ev.clientX;
+      this.lastPointerY = ev.clientY;
+      this.world.orbit(-dx * 0.007, dy * 0.005);
+    });
+
+    const endOrbit = (ev: PointerEvent) => {
+      if (ev.button === 2 || this.orbitDragging) {
+        this.orbitDragging = false;
+        try {
+          canvas.releasePointerCapture(ev.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    canvas.addEventListener('pointerup', endOrbit);
+    canvas.addEventListener('pointercancel', endOrbit);
+  }
+
   private async enterHub(x: number, z: number): Promise<void> {
     this.screen = 'hub';
     this.clearUi();
@@ -152,17 +217,12 @@ export class Game {
       }
     };
 
-    canvas.onclick = (ev) => {
-      if (this.screen !== 'hub' || !this.world) return;
-      const pt = this.world.screenToGround(ev.clientX, ev.clientY);
-      if (pt) this.world.moveToWorld(pt);
-    };
+    this.bindCanvasInput(canvas);
 
     this.renderHud();
     this.running = true;
     this.last = performance.now();
     requestAnimationFrame((t) => this.loop(t));
-    // Swap procedural placeholders for Kenney GLTF props when ready
     await this.world.ready;
     if (this.flags.wraithDead) this.world.hideNpc('wraith', true);
   }
@@ -178,7 +238,7 @@ export class Game {
         <button class="btn" id="hud-title">Title</button>
       </div>
       <div class="objective panel">${this.storyBeat}</div>
-      <div class="minimap-hint panel">Merrowgate Hub · Click ground to walk · E near NPC</div>
+      <div class="minimap-hint panel">LMB walk · RMB NPC talk / drag orbit · Q/R rotate · E/F interact</div>
     `;
     this.ui.appendChild(hud);
     hud.querySelector('#hud-party')!.addEventListener('click', () => this.showParty());

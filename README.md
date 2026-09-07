@@ -1,6 +1,6 @@
 # Ashen Ledger
 
-Isometric CRPG vertical slice set in **Merrowgate**, a canal city where the **Ashen Ledger** turns unpaid debts into living curses. A drowned creditor washes ashore listing your party as collateral. Investigate forgeries, recruit a companion, and choose how to face the Ledger — gothic intrigue, moral gray. Original setting (not Baldur's Gate IP).
+Isometric-ish CRPG vertical slice set in **Merrowgate**, a canal city where the **Ashen Ledger** turns unpaid debts into living curses. A drowned creditor washes ashore listing your party as collateral. Investigate forgeries, recruit a companion, and choose how to face the Ledger — gothic intrigue, moral gray. Original setting (not Baldur's Gate IP).
 
 ## Run
 
@@ -23,7 +23,8 @@ You play **Rowan Vale**, debt-marked investigator. Speak with **Dockhand Brin**,
 ## Vertical slice features
 
 - Title screen (new / continue)
-- Isometric Merrowgate hub (Three.js), click-to-move
+- Merrowgate hub (Three.js): click-to-move, wall/prop collision with slide, orbit camera
+- Right-click NPCs to talk (E/F nearby interact backup)
 - Dialogue with 2 NPCs; branching debt consequence with Mirelle
 - One companion recruit (**Mirelle Quill**)
 - One turn-based combat encounter (Blot-Wraith)
@@ -34,7 +35,11 @@ You play **Rowan Vale**, debt-marked investigator. Speak with **Dockhand Brin**,
 
 | Input | Action |
 |-|--|
-| Left click | Move on the ground |
+| **Left click** | Move on the ground |
+| **Right click** on NPC | Open dialogue / engage wraith |
+| **Right-drag** (empty) | Orbit camera around player |
+| **Q** / **R** | Rotate camera left / right |
+| **E** / **F** | Interact with nearby NPC (backup) |
 | **E** | Interact with nearby NPC / start combat at wraith |
 | **I** | Inventory |
 | **C** / **P** | Party |
@@ -43,17 +48,15 @@ You play **Rowan Vale**, debt-marked investigator. Speak with **Dockhand Brin**,
 
 ## Tech
 
-Vite + TypeScript + Three.js. Merrowgate hub uses Kenney CC0 low-poly GLTF props with improved lighting (hemisphere + moon directional soft shadows, warm lantern point lights, exponential fog, ACES tone mapping). Procedural capsules remain as fallback if models fail to load.
+Vite + TypeScript + Three.js. Orthographic orbit camera (yaw/pitch), AABB collision with wall slide. Gothic lighting (hemisphere + moon soft shadows, lanterns, fog, ACES). Characters are Blender-authored smooth low-poly humanoids; environment uses Kenney CC0 kits.
 
 ## Assets & licenses
 
-All 3D models are **CC0 1.0** by [Kenney](https://kenney.nl) (attribution not required; credited with appreciation):
+| Source | Use |
+|--------|-----|
+| **Blender-authored** (`public/models/characters/`, `tools/make_characters.py`) | Rowan, Mirelle, Brin — smooth low-poly fantasy (not voxel/blocky) |
+| [Kenney Fantasy Town Kit](https://kenney.nl/assets/fantasy-town-kit) (CC0) | Walls, roofs, stalls, lantern, cart, fountain |
+| [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0) | Ghost (Blot-Wraith), crypt, lightposts, fence, pine, bench |
+| [Kenney Pirate Kit](https://kenney.nl/assets/pirate-kit) (CC0) | Dock, boat, barrels, crates |
 
-| Pack | Use in slice |
-|------|----------------|
-| [Fantasy Town Kit](https://kenney.nl/assets/fantasy-town-kit) | Walls, roofs, stalls, lantern, cart, fountain |
-| [Graveyard Kit](https://kenney.nl/assets/graveyard-kit) | Ghost (Blot-Wraith), crypt, lightposts, fence, pine, bench |
-| [Blocky Characters](https://kenney.nl/assets/blocky-characters) | Player + NPC humanoids |
-| [Pirate Kit](https://kenney.nl/assets/pirate-kit) | Dock, boat, barrels, crates |
-
-Curated GLBs live under `public/models/` with license copies and `CREDITS.txt`.
+Kenney **Blocky Characters** were removed. See `public/models/CREDITS.txt`.

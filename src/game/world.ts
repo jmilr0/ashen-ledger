@@ -7,6 +7,9 @@ import { SELECT_ORDER } from './types';
 const TILE = 1.2;
 const GRID = 11; // -5..5
 const PLAYER_RADIUS = 0.32;
+/** Formation trail center-to-center (~0.9 m). Soft-slide uses a leaner radius so doorways stay clear. */
+const FOLLOW_SPACING = 0.9;
+const FOLLOWER_RADIUS = 0.22;
 const ORBIT_DIST = 18;
 const ORBIT_PITCH_MIN = 0.35;
 const ORBIT_PITCH_MAX = 1.25;
@@ -45,6 +48,15 @@ const PATH = {
   guide: './models/characters/guide.glb',
   surgeon: './models/characters/surgeon.glb',
   clerkParty: './models/characters/clerk.glb',
+  // Optional Corbières / priory kit (Art drops) — null-ok loadModel
+  falseAltar: './models/props/false_altar.glb',
+  yardRope: './models/props/yard_rope.glb',
+  collapsingLoft: './models/props/collapsing_loft.glb',
+  sheepGate: './models/props/sheep_gate.glb',
+  huguesPavilion: './models/props/hugues_pavilion.glb',
+  bernaNpc: './models/characters/brin.glb',
+  huguesNpc: './models/characters/rowan.glb',
+  serenaNpc: './models/characters/mirelle.glb',
 };
 
 /** Axis-aligned collider on XZ plane (y ignored for walk). */
@@ -252,11 +264,12 @@ export class World {
     fromX: number,
     fromZ: number,
     toX: number,
-    toZ: number
+    toZ: number,
+    radius = PLAYER_RADIUS
   ): { x: number; z: number } {
     let x = toX;
     let z = toZ;
-    const r = PLAYER_RADIUS;
+    const r = radius;
 
     const hits = (px: number, pz: number) => {
       for (const c of this.colliders) {
@@ -266,9 +279,35 @@ export class World {
     };
 
     if (!hits(x, z)) return { x, z };
+    // Axis slide — keep doorways traversable (followers + player soft-slide)
     if (!hits(x, fromZ)) return { x, z: fromZ };
     if (!hits(fromX, z)) return { x: fromX, z };
     return { x: fromX, z: fromZ };
+  }
+
+  /** Prefer ideal offset; if blocked, nudge sideways so trail doesn't plug doorways. */
+  private softSlideFollower(
+    fromX: number,
+    fromZ: number,
+    idealX: number,
+    idealZ: number,
+    sideX: number,
+    sideZ: number
+  ): { x: number; z: number } {
+    const primary = this.resolveCollision(fromX, fromZ, idealX, idealZ, FOLLOWER_RADIUS);
+    const dx = idealX - primary.x;
+    const dz = idealZ - primary.z;
+    if (dx * dx + dz * dz < 0.04) return primary;
+    // Try soft lateral offsets (±) toward clear space
+    for (const sign of [1, -1, 1.6, -1.6]) {
+      const tx = idealX + sideX * 0.35 * sign;
+      const tz = idealZ + sideZ * 0.35 * sign;
+      const slid = this.resolveCollision(fromX, fromZ, tx, tz, FOLLOWER_RADIUS);
+      const sx = idealX - slid.x;
+      const sz = idealZ - slid.z;
+      if (sx * sx + sz * sz < dx * dx + dz * dz) return slid;
+    }
+    return primary;
   }
 
   /** Fontfroide road: dirt track, ditch, abbey wall stubs, alley posts. */
@@ -610,7 +649,8 @@ export class World {
     // Optional party GLBs (non-blocking) — upgrade followers / player when files exist
     await this.tryHookPartyMeshes();
     if (this.zone === 'corbieres' || this.zone === 'act3_close') {
-      // Stub maps — keep box geometry; Art will own meshes later.
+      // Stub maps — keep box geometry; optional priory kit / NPC GLBs when Art ships them.
+      await this.tryHookPrioryKit();
       this.updateCamera();
       return;
     }
@@ -933,6 +973,97 @@ export class World {
     }
   }
 
+
+  /** Non-blocking: priory props (false altar, yard rope, loft, sheep-gate, pavilion) + NPC stand-ins. */
+  private async tryHookPrioryKit(): Promise<void> {
+    if (this.zone !== 'corbieres' && this.zone !== 'act3_close') return;
+
+    if (this.zone === 'corbieres') {
+      const door = this.activeNpcs.find((n) => n.id === 'priory_door');
+      const dx = (door?.x ?? -2.2) * TILE;
+      const dz = (door?.z ?? -3.5) * TILE;
+      const hold = this.activeNpcs.find((n) => n.id === 'hold_door');
+      const hx = (hold?.x ?? 2.0) * TILE;
+      const hz = (hold?.z ?? -3.2) * TILE;
+      const hug = this.activeNpcs.find((n) => n.id === 'hugues');
+      const px = (hug?.x ?? -1.5) * TILE;
+      const pz = (hug?.z ?? 0.5) * TILE;
+
+      const sheep = await loadModel(PATH.sheepGate);
+      if (sheep) {
+        fitToHeight(sheep, 2.2);
+        tintMeshes(sheep, 0x5a5848, 0.12);
+        sheep.position.set(dx, 0, dz);
+        sheep.name = 'sheep-gate-art';
+        this.scene.add(sheep);
+        this.addBoxCollider(dx, dz, 0.9, 0.4);
+      }
+
+      const rope = await loadModel(PATH.yardRope);
+      if (rope) {
+        fitToHeight(rope, 1.4);
+        tintMeshes(rope, 0x4a4030, 0.12);
+        rope.position.set(hx - 0.35, 0, hz + 0.2);
+        rope.name = 'yard-rope-art';
+        this.scene.add(rope);
+      }
+
+      const loft = await loadModel(PATH.collapsingLoft);
+      if (loft) {
+        fitToHeight(loft, 2.3);
+        tintMeshes(loft, 0x5a5040, 0.1);
+        loft.position.set(dx + 2.2, 0, dz - 1.2);
+        loft.name = 'collapsing-loft-art';
+        this.scene.add(loft);
+        this.addBoxCollider(dx + 2.2, dz - 1.2, 1.2, 0.9);
+      }
+
+      const pavilion = await loadModel(PATH.huguesPavilion);
+      if (pavilion) {
+        fitToHeight(pavilion, 2.6);
+        tintMeshes(pavilion, 0x4a4858, 0.1);
+        pavilion.position.set(px - 0.4, 0, pz - 0.6);
+        pavilion.name = 'hugues-pavilion-art';
+        this.scene.add(pavilion);
+        this.addBoxCollider(px - 0.4, pz - 0.6, 1.1, 0.8);
+      }
+
+      const altar = await loadModel(PATH.falseAltar);
+      if (altar) {
+        fitToHeight(altar, 1.1);
+        tintMeshes(altar, 0x5a5448, 0.12);
+        altar.position.set(0.2 * TILE, 0, -4.2 * TILE);
+        altar.name = 'false-altar-art';
+        this.scene.add(altar);
+        this.addBoxCollider(0.2 * TILE, -4.2 * TILE, 0.7, 0.45);
+      }
+
+      const npcHooks: Array<{ id: string; path: string; h: number; tint: number }> = [
+        { id: 'berna', path: PATH.bernaNpc, h: 1.65, tint: 0x4a5848 },
+        { id: 'hugues', path: PATH.huguesNpc, h: 1.78, tint: 0x4a4858 },
+        { id: 'serena', path: PATH.serenaNpc, h: 1.68, tint: 0x5a4058 },
+      ];
+      for (const h of npcHooks) {
+        const art = await loadModel(h.path);
+        if (art) await this.upgradeNpc(h.id, art, h.h, h.tint, 0.12);
+      }
+    }
+
+    if (this.zone === 'act3_close') {
+      const altarNpc = this.activeNpcs.find((n) => n.id === 'splinter');
+      const ax = (altarNpc?.x ?? 0.2) * TILE;
+      const az = (altarNpc?.z ?? -3.8) * TILE;
+      const altar = await loadModel(PATH.falseAltar);
+      if (altar) {
+        fitToHeight(altar, 1.1);
+        tintMeshes(altar, 0x5a5448, 0.15);
+        altar.position.set(ax, 0, az);
+        altar.name = 'false-altar-art';
+        this.scene.add(altar);
+      }
+    }
+  }
+
   private async upgradeNpc(
     id: string,
     model: THREE.Group | null,
@@ -977,32 +1108,50 @@ export class World {
     this.layoutFollowers(true);
   }
 
-  private layoutFollowers(snap: boolean): void {
-    const px = this.playerMesh.position.x;
-    const pz = this.playerMesh.position.z;
-    const facing = this.playerMesh.rotation.y;
-    const backX = -Math.sin(facing);
-    const backZ = -Math.cos(facing);
+  private layoutFollowers(snap: boolean, dt = 1 / 60): void {
+    // trail already excludes controlledId + outForAct / downed (Game.followerTrail)
     for (const id of SELECT_ORDER) {
       const mesh = this.followerMeshes.get(id);
       if (!mesh) continue;
       if (id === this.controlledId || !this.followerTrail.includes(id)) {
         mesh.visible = false;
-        continue;
       }
+    }
+
+    const facing = this.playerMesh.rotation.y;
+    const backX = -Math.sin(facing);
+    const backZ = -Math.cos(facing);
+    const sideX = Math.cos(facing);
+    const sideZ = Math.sin(facing);
+    // Frame-rate independent soft chase
+    const lerp = snap ? 1 : 1 - Math.exp(-9 * Math.max(0.001, dt));
+
+    let anchorX = this.playerMesh.position.x;
+    let anchorZ = this.playerMesh.position.z;
+
+    for (let slot = 0; slot < this.followerTrail.length; slot++) {
+      const id = this.followerTrail[slot];
+      const mesh = this.followerMeshes.get(id);
+      if (!mesh) continue;
       mesh.visible = true;
-      const slot = this.followerTrail.indexOf(id);
-      const dist = 0.9 * (slot + 1);
-      const side = slot % 2 === 0 ? -0.25 : 0.25;
-      const tx = px + backX * dist + Math.cos(facing) * side;
-      const tz = pz + backZ * dist + Math.sin(facing) * side;
+      const side = slot % 2 === 0 ? -0.22 : 0.22;
+      const idealX = anchorX + backX * FOLLOW_SPACING + sideX * side;
+      const idealZ = anchorZ + backZ * FOLLOW_SPACING + sideZ * side;
+      // Snap from ideal (avoid flying in from origin); chase uses current mesh pos
+      const fromX = snap ? idealX : mesh.position.x;
+      const fromZ = snap ? idealZ : mesh.position.z;
+      const slid = this.softSlideFollower(fromX, fromZ, idealX, idealZ, sideX, sideZ);
       if (snap) {
-        mesh.position.set(tx, 0, tz);
+        mesh.position.set(slid.x, 0, slid.z);
       } else {
-        mesh.position.x += (tx - mesh.position.x) * 0.18;
-        mesh.position.z += (tz - mesh.position.z) * 0.18;
+        mesh.position.x += (slid.x - mesh.position.x) * lerp;
+        mesh.position.z += (slid.z - mesh.position.z) * lerp;
+        mesh.position.y = 0;
       }
       mesh.rotation.y = facing;
+      // Offset chain: next slot trails this follower's settled target (not a blob on the leader)
+      anchorX = slid.x;
+      anchorZ = slid.z;
     }
   }
 
@@ -1095,7 +1244,7 @@ export class World {
     }
 
     if (!this.pathTarget) {
-      this.layoutFollowers(false);
+      this.layoutFollowers(false, dt);
       this.updateCamera();
       return;
     }
@@ -1127,7 +1276,7 @@ export class World {
     }
     this.playerX = pos.x / TILE;
     this.playerZ = pos.z / TILE;
-    this.layoutFollowers(false);
+    this.layoutFollowers(false, dt);
     this.updateCamera();
   }
 

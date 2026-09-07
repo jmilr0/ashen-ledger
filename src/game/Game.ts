@@ -256,6 +256,79 @@ export class Game {
     );
   }
 
+  /** Explicit Rest (10-rest-action): Surgeon required, once per beat — not auto-magic. */
+  private surgeonPresent(): boolean {
+    return this.party.some((p) => p.id === 'surgeon' && p.recruited && !p.outForAct && p.stats.hp > 0);
+  }
+
+  private currentRestBeatKey(): string {
+    const beat =
+      this.mapZone === 'act3_close'
+        ? String(this.flags.act3_beat || 'river')
+        : this.mapZone === 'corbieres'
+          ? String(this.flags.act2_beat || 'road')
+          : String(this.flags.act1_beat || 'road');
+    return `${this.mapZone}:${beat}`;
+  }
+
+  private restUsedThisBeat(): boolean {
+    return String(this.flags.rested_beat_key || '') === this.currentRestBeatKey();
+  }
+
+  private markRestUsedThisBeat(): void {
+    this.flags.rested_beat_key = this.currentRestBeatKey();
+  }
+
+  /** Clear bleeds + partial HP. Caller enforces Surgeon / beat lock. */
+  private applyPartyRestHeal(): void {
+    for (const m of this.party) {
+      if (!m.recruited || m.outForAct || m.stats.hp <= 0) continue;
+      m.bleeding = false;
+      m.bleedTicks = 0;
+      if (m.stats.hp < m.stats.maxHp) {
+        const gain = Math.max(3, Math.floor(m.stats.maxHp * 0.25));
+        m.stats.hp = Math.min(m.stats.maxHp, m.stats.hp + gain);
+      }
+    }
+    this.markRestUsedThisBeat();
+    this.refreshPartyStrip();
+  }
+
+  /** Party-panel Rest — Elias works. Time and linen. */
+  private tryExplicitRest(): void {
+    if (this.combat) {
+      this.toast('Not while iron’s up.');
+      return;
+    }
+    if (!this.surgeonPresent()) {
+      this.toast('No steady hands. Keep walking.');
+      return;
+    }
+    if (this.restUsedThisBeat()) {
+      this.toast('Linen’s spent. Wait for the next roof.');
+      return;
+    }
+    this.applyPartyRestHeal();
+    this.barkOnce('party_rest', 'Elias: Hold still who can. Time and linen — not miracles.');
+    this.toast('Elias works. Time and linen.');
+    this.persist();
+  }
+
+  /** 09: Act III river unlock — Serena OR Hugues deal OR priory aftermath (no new flags). */
+  private act3RiverUnlocked(): boolean {
+    if (this.flags.act3_done) return false;
+    if (this.flags.talked_serena) return true;
+    const deal = String(this.flags.captain_deal || 'none');
+    if (this.flags.talked_hugues && deal !== 'none') return true;
+    const path = String(this.flags.priory_path || '');
+    const fightDone =
+      !!this.flags.hold_door_done ||
+      !!this.flags.priory_fight_done ||
+      String(this.flags.act2_beat || '') === 'fight';
+    if (path && fightDone) return true;
+    return false;
+  }
+
   selectCompanion(id: JobId): void {
     const m = this.party.find((p) => p.id === id);
     if (!m || !m.recruited || m.outForAct || m.stats.hp <= 0) {
@@ -306,13 +379,13 @@ export class Game {
       if (this.flags.ferry_done) this.world.hideNpc('ferry', true);
       const act1Done = !!this.flags.act1_complete || !!this.flags.narbonne_outcome;
       this.world.hideNpc('corbieres_road', !act1Done);
-      const act3Open = !!this.flags.talked_serena && !this.flags.act3_done;
+      const act3Open = this.act3RiverUnlocked();
       this.world.hideNpc('act3_gate', !act3Open);
       return;
     }
     if (this.mapZone === 'corbieres') {
       if (this.flags.hold_door_done) this.world.hideNpc('hold_door', true);
-      const act3Open = !!this.flags.talked_serena && !this.flags.act3_done;
+      const act3Open = this.act3RiverUnlocked();
       this.world.hideNpc('act3_road', !act3Open);
       return;
     }
@@ -516,12 +589,12 @@ export class Game {
       return;
     }
     if (n.id === 'act3_road' || n.id === 'act3_gate') {
-      if (!this.flags.talked_serena) {
-        this.toast('Speak Na Serena after Hugues — then the river watch.');
-        return;
-      }
       if (this.flags.act3_done) {
         this.toast('Campaign frame already closed.');
+        return;
+      }
+      if (!this.act3RiverUnlocked()) {
+        this.toast('Speak Serena, settle Hugues’s deal, or finish the priory fight — then the river.');
         return;
       }
       this.startDialogue('act3_gate');
@@ -775,7 +848,7 @@ export class Game {
   private maybeContinuityLines(node: DialogueNode | null, id: string): DialogueNode | null {
     if (!node || node.id !== 'after') return node;
     const act2 = !!this.flags.act2_beat || !!this.flags.priory_path;
-    const act3Open = !!this.flags.talked_serena || !!this.flags.act3_beat;
+    const act3Open = this.act3RiverUnlocked() || !!this.flags.act3_beat;
     if (id === 'cellarer' && act2) {
       return {
         ...node,
@@ -1180,8 +1253,8 @@ export class Game {
     }
 
     if (effect === 'enter_act3') {
-      if (!this.flags.talked_serena) {
-        this.toast('Speak Na Serena after Hugues first.');
+      if (!this.act3RiverUnlocked()) {
+        this.toast('Speak Serena, settle Hugues’s deal, or finish the priory fight first.');
         if (this.dialogueNpc === 'road_back_narbonne') {
           this.dialogueNode = this.dialogueTree.find((n) => n.id === 'gate_act3') ?? this.dialogueNode;
           this.drawDialogue();
@@ -1192,7 +1265,25 @@ export class Game {
       this.mapZone = 'act3_close';
       this.flags.map_zone = 'act3_close';
       if (!this.flags.act3_beat) this.flags.act3_beat = 'river';
-      this.storyBeat = 'Act III. Names, then the splinter — altar or pine in the square.';
+      this.storyBeat = this.flags.talked_serena
+        ? 'Act III. Names, then the splinter — altar or pine in the square.'
+        : 'Act III. No widow’s name yet — hill may be ash; wood still waits.';
+      // Once-toasts if Serena skipped (09): prefer Hugues-path bark, else fight-path
+      if (!this.flags.talked_serena) {
+        const deal = String(this.flags.captain_deal || 'none');
+        const viaHugues = !!this.flags.talked_hugues && deal !== 'none';
+        if (viaHugues) {
+          this.barkOnce(
+            'act3_skip_serena_hugues',
+            'Catalana: No widow’s name. Hill house may be ash. Wood still waits.'
+          );
+        } else {
+          this.barkOnce(
+            'act3_skip_serena_fight',
+            'Guillem: Captain’s still talking or he’s not. We don’t need her to end the wood.'
+          );
+        }
+      }
       this.barkOnce('enter_act3_river', 'Arnau: Wood or politics next. Don’t rush the wax.');
       if (this.flags.talked_leper || this.flags.bark_rest_leper) {
         this.barkOnce('enter_act3_after_leper', 'Elias: Bleeds quiet. Don’t open them for sport.');
@@ -1237,16 +1328,17 @@ export class Game {
 
     if (effect === 'rest_leper') {
       this.flags.talked_leper = true;
-      for (const m of this.party) {
-        if (m.outForAct || m.stats.hp <= 0) continue;
-        m.bleeding = false;
-        m.bleedTicks = 0;
-        if (m.stats.hp < m.stats.maxHp) {
-          m.stats.hp = Math.min(m.stats.maxHp, m.stats.hp + 4);
-        }
+      // Same Rest as party panel — no double-heal if linen already spent this beat
+      if (!this.restUsedThisBeat() && this.surgeonPresent()) {
+        this.applyPartyRestHeal();
+        this.barkOnce('rest_leper', 'Elias: Dawn linen. No captains at the door.');
+        this.toast('Elias works. Time and linen.');
+      } else if (this.restUsedThisBeat()) {
+        this.barkOnce('rest_leper', 'Elias: Dawn linen. No captains at the door.');
+        this.toast('Linen’s spent. Wait for the next roof.');
+      } else {
+        this.barkOnce('rest_leper', 'Elias: Dawn linen. No captains at the door.');
       }
-      this.barkOnce('rest_leper', 'Elias: Dawn linen. No captains at the door.');
-      this.refreshPartyStrip();
       return 'continue';
     }
 
@@ -1656,12 +1748,21 @@ export class Game {
         </div>`;
       })
       .join('');
+    const canRest = !this.combat;
     panel.innerHTML = `<h2>Party — The Broken Seal</h2>
       <p class="stats" style="margin-top:0.35rem;opacity:0.75">Formation L→R: Guide · Sergeant · Convers · Clerk · Surgeon. Face = hub controlled (1–5 / Tab). Bag ≠ face.</p>
       <div class="members">${members}</div>
-      <button class="btn" id="close-party">Close</button>`;
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
+        ${canRest ? `<button class="btn" id="party-rest" title="Elias works. Time and linen.">Rest — Elias works. Time and linen.</button>` : ''}
+        <button class="btn" id="close-party">Close</button>
+      </div>`;
     this.ui.appendChild(panel);
     panel.querySelector('#close-party')!.addEventListener('click', () => this.closeOverlay());
+    panel.querySelector('#party-rest')?.addEventListener('click', () => {
+      this.tryExplicitRest();
+      panel.remove();
+      this.showParty();
+    });
     panel.querySelectorAll('[data-face]').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.selectCompanion((btn as HTMLElement).dataset.face as JobId);

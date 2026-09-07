@@ -120,6 +120,8 @@ export const DEFAULT_FLAGS: Record<string, boolean | string | number> = {
   hint_lord_road: false,
   hold_door_done: false,
   priory_fight_done: false,
+  /** Engineering: Rest once-per-beat key (mapZone:beat). */
+  rested_beat_key: '',
 };
 
 export const DIALOGUES: Record<string, DialogueNode[]> = {
@@ -546,7 +548,7 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
     {
       id: 'start',
       speaker: 'Road West',
-      text: 'Back toward Narbonne and the Aude road. After Serena, the river watch and leper house open the Act III close.',
+      text: 'Back toward Narbonne and the Aude road. River watch opens after Serena, a settled Hugues deal, or the priory fight’s end.',
       choices: [
         { text: 'Return to the Act I road (Fontfroide–Narbonne).', effect: 'enter_act1_road' },
         { text: 'Take the river watch — Act III close.', effect: 'enter_act3' },
@@ -556,7 +558,7 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
     {
       id: 'gate_act3',
       speaker: 'Road West',
-      text: 'Serena first — then the river.',
+      text: 'Not yet — speak Serena, settle Hugues, or finish the priory fight. Then the river.',
       choices: [{ text: '(Understood)', effect: 'end' }],
     },
   ],

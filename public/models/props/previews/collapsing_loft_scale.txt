@@ -1,0 +1,9 @@
+height_m=2.3421
+width_x_m=3.2600
+depth_y_m=2.2867
+tris=572
+objects=Loft_Debris,Loft_FallenBeams,Loft_Remaining,Loft_Stone
+origin=ground_center_debris_footprint
+collision=tight_to_mesh
+state=static_damaged_collapsed
+style=priory_loft_collapse_occitan_1208

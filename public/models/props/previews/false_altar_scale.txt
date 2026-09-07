@@ -1,0 +1,10 @@
+height_m=1.0825
+width_x_m=1.5601
+depth_y_m=0.9470
+tris=1360
+objects=Altar_False,Altar_RelicStand,Altar_Stone,Altar_Wax
+origin=ground_center_altar_footprint
+collision=tight_to_mesh
+interact_latch_note=~1.2x generous RMB latch only (not collider shell)
+reads=real_stone_table+cheap_false_wood_face+wax_stubs
+style=ruined_priory_false_shrine_occitan_1208

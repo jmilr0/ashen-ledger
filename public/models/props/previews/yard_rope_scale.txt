@@ -1,0 +1,10 @@
+height_m=1.3880
+width_x_m=2.1390
+depth_y_m=0.4400
+tris=2932
+objects=Yard_FarHardware,Yard_Hardware,Yard_HitchWrap,Yard_PostAssembly,Yard_Rope
+origin=post_base_ground
+collision=tight_to_mesh
+interact_latch_note=~1.2x forgiving RMB (ferry pattern)
+rope_hitch_z_m~=1.05
+style=priory_yard_brace_rope_occitan_1208

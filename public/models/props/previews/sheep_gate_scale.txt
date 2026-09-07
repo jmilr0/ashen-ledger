@@ -1,0 +1,11 @@
+height_m=1.5213
+width_x_m=3.2102
+depth_y_m=0.4712
+tris=796
+objects=Sheep_Latch,Sheep_Leaf,Sheep_Posts,Sheep_Wings
+origin=ground_center_between_posts
+collision=tight_to_mesh
+interact_latch_note=~1.2x generous RMB latch only (not collider shell)
+opening_m~=1.70 latch=drop_bar+rope_loop (NOT padlocked)
+reads=sheep_fold_hurdle_exit_gate
+style=priory_sheep_gate_occitan_1208

@@ -1,0 +1,10 @@
+height_m=2.5500
+width_x_m=4.2500
+depth_y_m=3.8000
+tris=2150
+objects=Pav_Banner,Pav_Camp,Pav_Canvas,Pav_Guys,Pav_Poles
+origin=ground_center_tent_footprint
+collision=tight_to_mesh
+open_front=+Y flaps_tied_back
+banner=dull_faded_stripe_no_glow
+style=northern_captain_field_pavilion_occitan_1208

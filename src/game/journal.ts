@@ -201,19 +201,28 @@ export function buildJournal(flags: FlagMap, _party?: PartyMember[]): JournalEnt
   // Act III journal map (07 + 08 zone enter)
   if (!!flags.talked_serena || !!flags.act3_beat || !!flags.act3_done || String(flags.map_zone) === 'act3_close') {
     const named = !!flags.lord_name;
+    // 09: without Serena, use Cold ash body until she is spoken to
+    const skippedSerena = !flags.talked_serena;
     entries.push({
       id: 'act3_open',
-      title: named ? 'Rope on paper' : flags.talked_serena ? 'Cold ash' : 'Names and wood',
+      title: named ? 'Rope on paper' : skippedSerena || !named ? 'Cold ash' : 'Names and wood',
       body: named
         ? 'Raimon of Quéribus. Hide him, hang him, or walk past.'
-        : flags.talked_serena && !named
-          ? 'No name. Hill house may already be empty.'
-          : 'Act III. Lord or empty house, then the splinter’s end.',
+        : 'No name. Hill house may already be empty.',
       status: flags.act3_done ? 'done' : 'active',
       sort: 100,
     });
   }
-  if (flags.talked_leper || flags.bark_rest_leper) {
+  if (flags.bark_party_rest || flags.bark_rest_leper) {
+    entries.push({
+      id: 'linen_quiet',
+      title: 'Linen and quiet',
+      body: 'Bleeds bound. No saints required.',
+      status: 'done',
+      sort: 95,
+    });
+  }
+    if (flags.talked_leper || flags.bark_rest_leper) {
     entries.push({
       id: 'rest_leper',
       title: 'Night under unringing bells',

@@ -1,15 +1,28 @@
 import {
+  CORBIERES_START,
   createDefaultInventory,
   createDefaultParty,
   DEFAULT_FLAGS,
   DIALOGUES,
-  NPCS,
   PLAYER_START,
 } from './data';
 import { CombatSession, type CombatActionId } from './combat';
+import { buildJournal } from './journal';
 import { hasSave, loadGame, saveGame } from './save';
-import type { CombatEncounter, DialogueNode, Item, JobId, PartyMember, SaveData, Screen } from './types';
+import type {
+  CombatEncounter,
+  DialogueNode,
+  Item,
+  JobId,
+  MapZone,
+  NpcDef,
+  PartyMember,
+  SaveData,
+  Screen,
+} from './types';
+import { SELECT_ORDER } from './types';
 import { World } from './world';
+import { JOB_PORTRAIT_COLOR } from './data';
 
 export class Game {
   private world: World | null = null;
@@ -29,6 +42,9 @@ export class Game {
   private lastPointerX = 0;
   private lastPointerY = 0;
   private canvasHandlersBound = false;
+  private controlledId: JobId = 'clerk';
+  private mapZone: MapZone = 'act1_road';
+  private journalToastIds = new Set<string>();
 
   constructor() {
     this.ui = document.getElementById('ui-root')!;
@@ -47,6 +63,10 @@ export class Game {
         if (this.screen === 'party') this.closeOverlay();
         else if (this.screen === 'hub') this.showParty();
       }
+      if (e.key === 'j' || e.key === 'J') {
+        if (this.screen === 'journal') this.closeOverlay();
+        else if (this.screen === 'hub') this.showJournal();
+      }
       if (e.key === 'e' || e.key === 'E' || e.key === 'f' || e.key === 'F') {
         if (this.screen === 'hub') this.tryInteract();
       }
@@ -57,11 +77,30 @@ export class Game {
         if (this.screen === 'hub') this.world?.orbit(0.18);
       }
       if (e.key === 'Escape') {
-        if (this.screen === 'party' || this.screen === 'inventory') this.closeOverlay();
+        if (this.screen === 'party' || this.screen === 'inventory' || this.screen === 'journal') {
+          this.closeOverlay();
+        }
       }
       if ((e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         if (this.screen === 'hub') this.persist('Saved.');
+      }
+      // Party switch 1–5 / Tab
+      if (this.screen === 'hub') {
+        const digit = e.key >= '1' && e.key <= '5' ? Number(e.key) - 1 : -1;
+        if (digit >= 0 && digit < SELECT_ORDER.length) {
+          this.selectCompanion(SELECT_ORDER[digit]);
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          this.cycleCompanion(e.shiftKey ? -1 : 1);
+        }
+      }
+      // Combat Space pause
+      if (this.screen === 'combat' && e.code === 'Space') {
+        e.preventDefault();
+        this.combat?.togglePause();
+        this.drawCombat();
       }
     });
   }
@@ -99,7 +138,7 @@ export class Game {
         <button class="btn primary" id="btn-new">New Journey</button>
         <button class="btn" id="btn-continue" ${hasSave() ? '' : 'disabled'}>Continue</button>
       </div>
-      <p class="hint">LMB move · RMB talk / drag orbit · Q/R rotate · E/F interact · I inv · C party · Ctrl+S save</p>
+      <p class="hint">LMB move · RMB talk / drag orbit · Q/R rotate · E/F interact · I inv · C party · J journal · 1–5/Tab switch · Ctrl+S save</p>
     `;
     this.ui.appendChild(el);
     el.querySelector('#btn-new')!.addEventListener('click', () => this.newGame());
@@ -110,6 +149,9 @@ export class Game {
     this.party = createDefaultParty();
     this.inventory = createDefaultInventory();
     this.flags = { ...DEFAULT_FLAGS };
+    this.controlledId = 'clerk';
+    this.mapZone = 'act1_road';
+    this.journalToastIds = new Set();
     this.storyBeat = 'Fontfroide. Take the chest. Do not break the true seal.';
     this.enterHub(PLAYER_START.x, PLAYER_START.z);
   }
@@ -124,11 +166,15 @@ export class Game {
     this.inventory = data.inventory;
     this.flags = { ...DEFAULT_FLAGS, ...data.flags };
     this.storyBeat = data.storyBeat;
+    this.mapZone = (data.mapZone || (this.flags.map_zone as MapZone) || 'act1_road') as MapZone;
+    this.flags.map_zone = this.mapZone;
+    this.controlledId = this.resolveControlled(data.controlledId);
     this.enterHub(data.playerX, data.playerZ);
   }
 
   private persist(msg = 'Progress noted.'): void {
     if (!this.world) return;
+    this.flags.map_zone = this.mapZone;
     const data: SaveData = {
       version: 1,
       party: this.party,
@@ -137,6 +183,8 @@ export class Game {
       playerX: this.world.playerX,
       playerZ: this.world.playerZ,
       storyBeat: this.storyBeat,
+      controlledId: this.controlledId,
+      mapZone: this.mapZone,
     };
     saveGame(data);
     this.toast(msg);
@@ -187,23 +235,75 @@ export class Game {
     canvas.addEventListener('pointercancel', endOrbit);
   }
 
+  private resolveControlled(preferred?: JobId): JobId {
+    const order: JobId[] = preferred
+      ? [preferred, 'clerk', 'sergeant', 'convers', 'guide', 'surgeon']
+      : ['clerk', 'sergeant', 'convers', 'guide', 'surgeon'];
+    for (const id of order) {
+      const m = this.party.find((p) => p.id === id);
+      if (m && m.recruited && !m.outForAct && m.stats.hp > 0) return id;
+    }
+    return 'clerk';
+  }
+
+  private followerTrail(): JobId[] {
+    return SELECT_ORDER.filter(
+      (id) =>
+        id !== this.controlledId &&
+        this.party.some((p) => p.id === id && p.recruited && !p.outForAct && p.stats.hp > 0)
+    );
+  }
+
+  selectCompanion(id: JobId): void {
+    const m = this.party.find((p) => p.id === id);
+    if (!m || !m.recruited || m.outForAct || m.stats.hp <= 0) {
+      this.toast(`${id} unavailable.`);
+      return;
+    }
+    this.controlledId = id;
+    this.world?.setControlled(id, this.followerTrail());
+    this.refreshPartyStrip();
+    this.toast(`Controlling ${m.name}.`);
+  }
+
+  private cycleCompanion(dir: number): void {
+    const living = SELECT_ORDER.filter((id) =>
+      this.party.some((p) => p.id === id && p.recruited && !p.outForAct && p.stats.hp > 0)
+    );
+    if (!living.length) return;
+    let idx = living.indexOf(this.controlledId);
+    if (idx < 0) idx = 0;
+    idx = (idx + dir + living.length) % living.length;
+    this.selectCompanion(living[idx]);
+  }
+
   private async enterHub(x: number, z: number): Promise<void> {
     this.screen = 'hub';
     this.clearUi();
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     this.world?.dispose();
-    this.world = new World(canvas);
+    this.controlledId = this.resolveControlled(this.controlledId);
+    this.world = new World(canvas, this.mapZone);
     this.world.setPlayerPos(x, z);
-    if (this.flags.ambush_done) this.world.hideNpc('bandits', true);
-    if (this.flags.ferry_done) this.world.hideNpc('ferry', true);
+    this.world.setControlled(this.controlledId, this.followerTrail());
+    this.applyNpcVisibility();
     this.bindCanvasInput(canvas);
     this.renderHud();
     this.running = true;
     this.last = performance.now();
     requestAnimationFrame((t) => this.loop(t));
     await this.world.ready;
+    this.applyNpcVisibility();
+    this.world.setControlled(this.controlledId, this.followerTrail());
+  }
+
+  private applyNpcVisibility(): void {
+    if (!this.world || this.mapZone !== 'act1_road') return;
     if (this.flags.ambush_done) this.world.hideNpc('bandits', true);
     if (this.flags.ferry_done) this.world.hideNpc('ferry', true);
+    // Corbières road only after Act I closer
+    const act1Done = !!this.flags.act1_complete || !!this.flags.narbonne_outcome;
+    this.world.hideNpc('corbieres_road', !act1Done);
   }
 
   private renderHud(): void {
@@ -211,23 +311,60 @@ export class Game {
     hud.id = 'hud';
     const carrier = this.flags.chest_carrier || '—';
     const trust = this.flags.pilgrim_trust;
+    const zoneLabel = this.mapZone === 'corbieres' ? 'Corbières stub' : 'Act I road';
     hud.innerHTML = `
       <div class="topbar">
         <button class="btn" id="hud-party">Party (C)</button>
         <button class="btn" id="hud-inv">Inventory (I)</button>
+        <button class="btn" id="hud-journal">Journal (J)</button>
         <button class="btn" id="hud-save">Save</button>
         <button class="btn" id="hud-title">Title</button>
       </div>
-      <div class="objective panel">${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust}</span></div>
-      <div class="minimap-hint panel">LMB walk · RMB NPC / orbit · Q/R rotate · E/F interact</div>
+      <div class="objective panel">${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust} · ${zoneLabel}</span></div>
+      <div class="party-strip" id="party-strip"></div>
+      <div class="minimap-hint panel">LMB walk · RMB NPC / orbit · Q/R · E/F · 1–5/Tab switch · J journal</div>
     `;
     this.ui.appendChild(hud);
     hud.querySelector('#hud-party')!.addEventListener('click', () => this.showParty());
     hud.querySelector('#hud-inv')!.addEventListener('click', () => this.showInventory());
+    hud.querySelector('#hud-journal')!.addEventListener('click', () => this.showJournal());
     hud.querySelector('#hud-save')!.addEventListener('click', () => this.persist());
     hud.querySelector('#hud-title')!.addEventListener('click', () => {
       this.persist('Autosaved on exit.');
       this.showTitle();
+    });
+    this.refreshPartyStrip();
+  }
+
+  private refreshPartyStrip(): void {
+    const strip = document.getElementById('party-strip');
+    if (!strip) return;
+    const carrier = String(this.flags.chest_carrier || '');
+    strip.innerHTML = SELECT_ORDER.map((id, i) => {
+      const p = this.party.find((m) => m.id === id)!;
+      const hpPct = Math.round((Math.max(0, p.stats.hp) / p.stats.maxHp) * 100);
+      const dead = p.outForAct || p.stats.hp <= 0;
+      const active = id === this.controlledId;
+      const bag = carrier === id ? '<span class="bag-pip" title="carries bag">bag</span>' : '';
+      const status = [
+        p.outForAct ? 'out' : '',
+        p.bleeding ? 'bleed' : '',
+        p.stats.hp <= 0 && !p.outForAct ? 'down' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return `<button class="portrait${active ? ' active' : ''}${dead ? ' dead' : ''}" data-job="${id}" ${dead ? 'disabled' : ''} title="${p.name} (${i + 1})">
+        <span class="portrait-swatch" style="background:${JOB_PORTRAIT_COLOR[id]}"></span>
+        <span class="portrait-meta"><strong>${i + 1} ${p.role}</strong>${bag}
+        <span class="stats">HP ${p.stats.hp}/${p.stats.maxHp}${status ? ' · ' + status : ''}</span>
+        <span class="bar"><span style="width:${hpPct}%"></span></span></span>
+      </button>`;
+    }).join('');
+    strip.querySelectorAll('[data-job]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.job as JobId;
+        if (this.screen === 'hub') this.selectCompanion(id);
+      });
     });
   }
 
@@ -241,7 +378,7 @@ export class Game {
     this.openNpc(n);
   }
 
-  private openNpc(n: (typeof NPCS)[number]): void {
+  private openNpc(n: NpcDef): void {
     if (n.id === 'bandits') {
       if (this.flags.ambush_done) {
         this.toast('Only mud and torn badges remain.');
@@ -297,6 +434,22 @@ export class Game {
         return;
       }
       this.startDialogue('narbonne_agent');
+      return;
+    }
+    if (n.id === 'corbieres_road') {
+      if (!this.flags.act1_complete && !this.flags.narbonne_outcome) {
+        this.toast('Finish the Narbonne letter first.');
+        return;
+      }
+      this.startDialogue('corbieres_road');
+      return;
+    }
+    if (n.id === 'priory_door') {
+      this.startDialogue('priory_stub');
+      return;
+    }
+    if (n.id === 'road_back') {
+      this.startDialogue('road_back_narbonne');
       return;
     }
     if (n.id === 'mairia' && !this.flags.chest_carrier) {
@@ -572,8 +725,10 @@ export class Game {
       this.flags.narbonne_outcome = 'refused_forger';
       this.flags.talked_narbonne = true;
       this.flags.act1_beat = 'narbonne_gate';
+      this.flags.act1_complete = true;
       this.storyBeat =
-        'Gate kept you out. Column moved anyway. Act I ends ugly — priory still ahead.';
+        'Gate kept you out. Hill road to Corbières is open.';
+      this.applyNpcVisibility();
       this.refreshObjective();
       this.persist();
       return 'close';
@@ -582,8 +737,10 @@ export class Game {
       this.flags.narbonne_outcome = 'deferred_gate';
       this.flags.talked_narbonne = true;
       this.flags.act1_beat = 'narbonne_gate';
+      this.flags.act1_complete = true;
       this.storyBeat =
-        'You rode past Narbonne. The legate may already be north. Priory is the only road left.';
+        'You rode past Narbonne. Take the Corbières hill road.';
+      this.applyNpcVisibility();
       this.refreshObjective();
       this.persist();
       return 'close';
@@ -592,32 +749,69 @@ export class Game {
     if (effect === 'end_act1') {
       this.flags.talked_narbonne = true;
       this.flags.act1_beat = 'narbonne_gate';
+      this.flags.act1_complete = true;
       const outcome = String(this.flags.narbonne_outcome || '');
       const trust = Number(this.flags.pilgrim_trust) || 0;
       if (outcome === 'delivered') {
         this.storyBeat =
           trust >= 2
-            ? 'Letter delivered. Pilgrims clear of the magazine road. Corbières priory waits (Act II).'
-            : 'Letter delivered. Road behind you is hostile. Corbières priory waits.';
+            ? 'Letter delivered. Take the hill road to Corbières (Act II stub).'
+            : 'Letter delivered. Road hostile — hill road to Corbières is open.';
       } else if (outcome === 'letter_damaged') {
         this.storyBeat =
-          'Letter stained but names ride. You are known as a peeker. Priory waits.';
+          'Letter stained but names ride. Hill road to Corbières is open.';
       } else if (outcome === 'refused_forger') {
         this.storyBeat =
-          'Gate kept you out. Column moved anyway. Act I ends ugly — priory still ahead.';
+          'Gate kept you out. Hill road to Corbières is the only clean exit.';
       } else if (outcome === 'deferred_gate') {
         this.storyBeat =
-          'You rode past Narbonne. The legate may already be north. Priory is the only road left.';
+          'You rode past Narbonne. Take the Corbières hill road.';
       } else {
-        this.storyBeat = 'Act I frame closed at Narbonne. Corbières priory waits (Act II).';
+        this.storyBeat = 'Act I closed. Take the hill road to Corbières (Act II stub).';
       }
-      this.toast('Act I frame complete.');
+      this.toast('Act I frame complete — Corbières road unlocked.');
+      this.applyNpcVisibility();
+      this.maybeJournalDoneToast();
       this.refreshObjective();
       this.persist();
       return 'close';
     }
 
+    if (effect === 'enter_corbieres') {
+      this.mapZone = 'corbieres';
+      this.flags.map_zone = 'corbieres';
+      this.flags.act1_complete = true;
+      this.storyBeat = 'Corbières priory road (Act II stub). Narrative owns the gate.';
+      this.toast('Entering Corbières road stub.');
+      this.persist();
+      this.closeDialogue();
+      void this.enterHub(CORBIERES_START.x, CORBIERES_START.z);
+      return 'stay';
+    }
+
+    if (effect === 'enter_act1_road') {
+      this.mapZone = 'act1_road';
+      this.flags.map_zone = 'act1_road';
+      this.storyBeat = 'Back on the Fontfroide–Narbonne road.';
+      this.toast('Returning to Act I road.');
+      this.persist();
+      this.closeDialogue();
+      void this.enterHub(-1.2, -4.2);
+      return 'stay';
+    }
+
     return 'close';
+  }
+
+  private maybeJournalDoneToast(): void {
+    const entries = buildJournal(this.flags, this.party);
+    for (const e of entries) {
+      if (e.status === 'done' && !this.journalToastIds.has(e.id)) {
+        this.journalToastIds.add(e.id);
+        this.toast(`Journal updated: ${e.title}`);
+        break;
+      }
+    }
   }
 
   private refreshObjective(): void {
@@ -634,12 +828,14 @@ export class Game {
   ): void {
     const shoveWater =
       opts?.shoveWater !== undefined ? opts.shoveWater : encounter === 'ferry';
+    const mode = this.flags.combat_mode === 'rounds' ? 'rounds' : 'rtwp';
     this.combat = new CombatSession(this.party, {
       encounter,
       sealIntact: !!this.flags.seal_intact,
       hasLoft: encounter === 'ambush' ? !!this.flags.has_loft_ambush : true,
       shoveWater,
       pilgrimTrust: Number(this.flags.pilgrim_trust) || 0,
+      mode,
     });
     this.screen = 'combat';
     this.drawCombat();
@@ -654,6 +850,7 @@ export class Game {
       this.ui.appendChild(panel);
     }
     const c = this.combat!;
+    const rtwp = c.mode === 'rtwp';
     const enemies = c.enemies
       .map((e) => {
         const tags = [
@@ -668,44 +865,73 @@ export class Game {
       .join('');
     const allies = c.allies
       .map((a) => {
-        const active = a.memberId === c.activeAllyId && c.turn === 'player' && !c.over;
+        const selected = a.memberId === (c.selectedAllyId ?? c.activeAllyId);
         const tags = [
           a.slot ?? '',
           a.holding ? 'Hold' : '',
+          a.order ? `order:${a.order}` : '',
           a.bleeding ? `bleed ${a.bleedTicks ?? 0}/2` : '',
           a.downed ? 'downed' : '',
-          active ? 'your move' : '',
+          selected ? (rtwp ? 'selected' : 'your move') : '',
         ]
           .filter(Boolean)
           .join(' · ');
-        return `<div class="enemy-chip${active ? ' active-ally' : ''}">${a.name} HP ${a.hp}/${a.maxHp}${tags ? ' · ' + tags : ''}</div>`;
+        const job = a.memberId ?? '';
+        return `<button class="enemy-chip${selected ? ' active-ally' : ''}" data-select="${job}" ${a.downed || a.hp <= 0 ? 'disabled' : ''}>${a.name} HP ${a.hp}/${a.maxHp}${tags ? ' · ' + tags : ''}</button>`;
       })
       .join('');
     const log = c.log.slice(-5).join('<br/>');
-    const actor = c.activeAlly();
+    const actorId = c.selectedAllyId ?? c.activeAllyId;
     const actions =
-      actor?.memberId && c.turn === 'player' && !c.over
-        ? c.actionsFor(actor.memberId)
-        : [];
+      actorId && !c.over && (rtwp || c.turn === 'player') ? c.actionsFor(actorId) : [];
     const btns = actions
       .map(
         (a) =>
           `<button class="btn${a.id === 'hold' || a.id === 'cut_rope' || a.id === 'call_out' ? ' primary' : ''}" data-act="${a.id}" ${a.enabled ? '' : 'disabled'}>${a.label}</button>`
       )
       .join('');
+    const banner = rtwp
+      ? c.paused
+        ? 'PAUSED — Space to resume · click portrait · queue orders'
+        : 'LIVE — Space to pause'
+      : `Round ${c.round} · sergeant→convers→guide→clerk→surgeon`;
     panel.innerHTML = `
-      <div class="combat-meta stats">Round ${c.round} · ${c.encounter === 'ambush' ? 'Borrowed-badge ambush' : 'Ferry rope'} · order sergeant→convers→guide→clerk→surgeon</div>
+      <div class="combat-meta stats">${banner} · ${c.encounter === 'ambush' ? 'Borrowed-badge ambush' : 'Ferry rope'}${rtwp ? '' : ' · rounds fallback'}</div>
       <div class="enemy-row">${enemies}</div>
-      <div class="enemy-row">${allies}</div>
+      <div class="enemy-row combat-portraits">${allies}</div>
       <div class="combat-log">${log}</div>
-      <div class="actions">${btns}${c.over ? '<button class="btn primary" id="finish">Continue</button>' : ''}</div>
+      <div class="actions">${btns}${
+        rtwp && !c.over
+          ? `<button class="btn" id="combat-pause">${c.paused ? 'Resume (Space)' : 'Pause (Space)'}</button>`
+          : ''
+      }${c.over ? '<button class="btn primary" id="finish">Continue</button>' : ''}</div>
     `;
+    panel.querySelectorAll('[data-select]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.select as JobId;
+        if (!id) return;
+        if (rtwp) {
+          c.selectAlly(id);
+          if (!c.paused) {
+            c.paused = true;
+            c.log.push('PAUSED — issuing orders.');
+          }
+        } else {
+          c.activeAllyId = id;
+        }
+        this.drawCombat();
+      });
+    });
     panel.querySelectorAll('[data-act]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.act as CombatActionId;
         c.act(id);
         this.drawCombat();
       });
+    });
+    panel.querySelector('#combat-pause')?.addEventListener('click', () => {
+      c.togglePause();
+      this.drawCombat();
     });
     panel.querySelector('#finish')?.addEventListener('click', () => this.endCombat());
   }
@@ -749,37 +975,71 @@ export class Game {
 
   private showParty(): void {
     this.screen = 'party';
+    document.getElementById('party-panel')?.remove();
     const panel = document.createElement('div');
     panel.id = 'party-panel';
     panel.className = 'panel';
-    const order: JobId[] = ['guide', 'sergeant', 'convers', 'clerk', 'surgeon'];
-    const members = order
-      .map((id) => this.party.find((p) => p.id === id)!)
+    const members = SELECT_ORDER.map((id) => this.party.find((p) => p.id === id)!)
       .map((p) => {
         const hpPct = Math.round((Math.max(0, p.stats.hp) / p.stats.maxHp) * 100);
         const flags = [
+          p.id === this.controlledId ? 'active speaker' : '',
           p.outForAct ? 'out for Act' : '',
           p.bleeding ? 'bleeding' : '',
+          p.stats.hp <= 0 && !p.outForAct ? 'downed' : '',
           this.flags.chest_carrier === p.id ? 'carries bag' : '',
         ]
           .filter(Boolean)
           .join(' · ');
-        return `<div class="member-card">
+        const canSelect = p.recruited && !p.outForAct && p.stats.hp > 0;
+        return `<div class="member-card${p.id === this.controlledId ? ' controlled' : ''}">
           <div>
             <strong>${p.name}</strong>
             <div class="stats">${p.role} · ATK ${p.stats.atk} DEF ${p.stats.def}${flags ? ' · ' + flags : ''}</div>
             <div class="bar"><span style="width:${hpPct}%"></span></div>
           </div>
-          <div class="stats">HP ${p.stats.hp}/${p.stats.maxHp}<br/><span class="stub-note">job (no spells)</span></div>
+          <div class="stats">HP ${p.stats.hp}/${p.stats.maxHp}<br/>
+          ${canSelect ? `<button class="btn" data-face="${p.id}">Set face</button>` : '<span class="stub-note">unavailable</span>'}
+          </div>
         </div>`;
       })
       .join('');
     panel.innerHTML = `<h2>Party — The Broken Seal</h2>
-      <p class="stats" style="margin-top:0.35rem;opacity:0.75">Formation L→R: Guide · Sergeant · Convers · Clerk · Surgeon. Front = Sergeant+Convers.</p>
+      <p class="stats" style="margin-top:0.35rem;opacity:0.75">Formation L→R: Guide · Sergeant · Convers · Clerk · Surgeon. Face = hub controlled (1–5 / Tab). Bag ≠ face.</p>
       <div class="members">${members}</div>
       <button class="btn" id="close-party">Close</button>`;
     this.ui.appendChild(panel);
     panel.querySelector('#close-party')!.addEventListener('click', () => this.closeOverlay());
+    panel.querySelectorAll('[data-face]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.selectCompanion((btn as HTMLElement).dataset.face as JobId);
+        panel.remove();
+        this.showParty();
+      });
+    });
+  }
+
+  private showJournal(): void {
+    this.screen = 'journal';
+    document.getElementById('journal-panel')?.remove();
+    const panel = document.createElement('div');
+    panel.id = 'journal-panel';
+    panel.className = 'panel';
+    const entries = buildJournal(this.flags, this.party);
+    const rows = entries
+      .map(
+        (e) => `<div class="journal-entry status-${e.status}">
+          <div class="journal-head"><strong>${e.title}</strong><span class="journal-status">${e.status}</span></div>
+          <p>${e.body}</p>
+        </div>`
+      )
+      .join('');
+    panel.innerHTML = `<h2>Journal</h2>
+      <p class="stats" style="margin-top:0.35rem;opacity:0.75">Quest log from the road — not a flag dump.</p>
+      <div class="journal-list">${rows || '<em>Nothing recorded yet.</em>'}</div>
+      <button class="btn" id="close-journal">Close</button>`;
+    this.ui.appendChild(panel);
+    panel.querySelector('#close-journal')!.addEventListener('click', () => this.closeOverlay());
   }
 
   private showInventory(): void {
@@ -824,7 +1084,9 @@ export class Game {
   private closeOverlay(): void {
     document.getElementById('party-panel')?.remove();
     document.getElementById('inventory-panel')?.remove();
+    document.getElementById('journal-panel')?.remove();
     this.screen = 'hub';
+    this.refreshPartyStrip();
   }
 
   private loop(t: number): void {
@@ -832,6 +1094,14 @@ export class Game {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
     if (this.screen === 'hub') this.world.update(dt);
+    if (this.screen === 'combat' && this.combat && !this.combat.over) {
+      const before = this.combat.log.length;
+      const wasPaused = this.combat.paused;
+      this.combat.update(dt);
+      if (this.combat.log.length !== before || this.combat.paused !== wasPaused || this.combat.over) {
+        this.drawCombat();
+      }
+    }
     this.world.render();
     requestAnimationFrame((nt) => this.loop(nt));
   }

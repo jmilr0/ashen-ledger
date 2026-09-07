@@ -25,6 +25,8 @@ export interface CombatOptions {
   hasLoft?: boolean;
   shoveWater?: boolean;
   pilgrimTrust?: number;
+  /** 'rtwp' (default) or 'rounds' debug fallback. */
+  mode?: 'rtwp' | 'rounds';
 }
 
 /** Formation lane combat — jobs, not fantasy spells. */
@@ -51,12 +53,23 @@ export class CombatSession {
   ferryWatchCleared = false;
   guideBoltHintShown = false;
   round = 1;
+  /** RTwP: clock stopped while true. */
+  paused = true;
+  mode: 'rtwp' | 'rounds' = 'rtwp';
+  /** Selected portrait under pause (reuse as activeAllyId for UI). */
+  selectedAllyId: JobId | null = null;
+  private holdRemain = 0;
+  private braceRemain = 0;
+  private bleedAcc = 0;
+  private skirmishTime = 0;
 
   constructor(party: PartyMember[], opts: CombatOptions) {
     this.encounter = opts.encounter;
     this.sealIntact = opts.sealIntact;
     this.hasLoft = !!opts.hasLoft;
     this.shoveWater = !!opts.shoveWater;
+    this.mode = opts.mode === 'rounds' ? 'rounds' : 'rtwp';
+    this.paused = this.mode === 'rtwp';
 
     const available = party.filter((p) => p.recruited && !p.outForAct);
     this.allies = ALLY_ORDER.map((id) => available.find((p) => p.id === id))
@@ -120,6 +133,156 @@ export class CombatSession {
     }
 
     this.activeAllyId = this.nextAllyId(null);
+    this.selectedAllyId = this.activeAllyId;
+    if (this.mode === 'rtwp') {
+      this.log.push('PAUSED — Space to resume. Queue one order per ally.');
+      for (const a of this.allies) {
+        a.order = null;
+        a.recoverUntil = 0;
+      }
+      for (const e of this.enemies) {
+        e.recoverUntil = 0.8 + Math.random() * 0.6;
+      }
+    }
+  }
+
+  togglePause(): void {
+    if (this.over || this.mode !== 'rtwp') return;
+    this.paused = !this.paused;
+    this.log.push(this.paused ? 'PAUSED — Space to resume.' : 'LIVE.');
+  }
+
+  selectAlly(id: JobId): void {
+    const a = this.allies.find((x) => x.memberId === id && x.hp > 0 && !x.downed);
+    if (!a) return;
+    this.selectedAllyId = id;
+    this.activeAllyId = id;
+  }
+
+  /** Queue (or replace) an order for a living ally. Does not spend until live clock. */
+  setOrder(job: JobId, action: CombatActionId): void {
+    if (this.over) return;
+    if (this.mode === 'rounds') {
+      this.activeAllyId = job;
+      this.act(action);
+      return;
+    }
+    const ally = this.allies.find((a) => a.memberId === job && a.hp > 0 && !a.downed);
+    if (!ally) return;
+    this.selectedAllyId = job;
+    this.activeAllyId = job;
+    const allowed = this.actionsFor(job).find((x) => x.id === action && x.enabled);
+    if (!allowed) {
+      this.log.push(`${ally.name} cannot ${action} now.`);
+      return;
+    }
+    ally.order = action;
+    this.log.push(`${ally.name} ordered: ${allowed.label}.`);
+  }
+
+  /**
+   * RTwP live tick. No-op when paused, over, or rounds mode.
+   * TODO(GD feel-pass): tune recover / Hold duration once pause+portraits clickable.
+   */
+  update(dt: number): void {
+    if (this.over || this.mode !== 'rtwp' || this.paused) return;
+    this.skirmishTime += dt;
+    this.holdRemain = Math.max(0, this.holdRemain - dt);
+    this.braceRemain = Math.max(0, this.braceRemain - dt);
+    if (this.holdRemain <= 0) {
+      for (const a of this.allies) a.holding = false;
+      this.sergeantHeldThisRound = false;
+    }
+    if (this.braceRemain <= 0) this.wagonBraced = false;
+
+    for (const a of this.allies) {
+      if (a.hp <= 0 || a.downed) continue;
+      a.recoverUntil = Math.max(0, (a.recoverUntil ?? 0) - dt);
+      if (a.order && (a.recoverUntil ?? 0) <= 0 && a.memberId) {
+        const order = a.order as CombatActionId;
+        a.order = null;
+        this.executeFor(a.memberId, order);
+        if (this.over) return;
+        a.recoverUntil = this.recoverFor(a.memberId, order);
+      }
+    }
+
+    for (const e of this.enemies) {
+      if (e.hp <= 0 || e.downed) continue;
+      e.recoverUntil = Math.max(0, (e.recoverUntil ?? 0) - dt);
+      if ((e.recoverUntil ?? 0) <= 0) {
+        this.enemyPulse(e);
+        if (this.over) return;
+        e.recoverUntil = 1.6 + Math.random() * 0.5;
+      }
+    }
+
+    this.bleedAcc += dt;
+    if (this.bleedAcc >= 2.5) {
+      this.bleedAcc = 0;
+      this.bleedTicks();
+      this.checkEnd();
+    }
+  }
+
+  private recoverFor(job: JobId, action: CombatActionId): number {
+    if (action === 'hold') return 0.9;
+    if (job === 'sergeant') return 1.2;
+    if (job === 'surgeon') return 1.5;
+    return 1.4;
+  }
+
+  /** Run one job action without advancing the round wizard. */
+  private executeFor(job: JobId, action: CombatActionId): void {
+    const prev = this.activeAllyId;
+    const prevTurn = this.turn;
+    this.activeAllyId = job;
+    this.turn = 'player';
+    // Temporarily bypass afterPlayerAction round gate via flag
+    this._rtwpExecute = true;
+    this.act(action);
+    this._rtwpExecute = false;
+    this.activeAllyId = this.selectedAllyId ?? prev;
+    this.turn = prevTurn;
+  }
+
+  private _rtwpExecute = false;
+
+  private enemyPulse(foe: Combatant): void {
+    if (foe.wavering) {
+      this.log.push(`${foe.name} wavers and skips the swing.`);
+      foe.wavering = false;
+      return;
+    }
+    const targets = this.living('allies');
+    if (!targets.length) {
+      this.checkEnd();
+      return;
+    }
+    const front = targets.filter((t) => t.slot === 'frontL' || t.slot === 'frontR');
+    const pool = front.length ? front : targets;
+    const ally = pool[Math.floor(Math.random() * pool.length)];
+    let def = ally.def;
+    if (ally.slot === 'frontL' || ally.slot === 'frontR') def += this.frontDefBonus();
+    const d = this.dmg(foe.atk, def);
+    ally.hp = Math.max(0, ally.hp - d);
+    this.log.push(`${foe.name} cuts for ${d}. ${ally.name}: ${ally.hp}/${ally.maxHp}`);
+    if (ally.hp <= 0) {
+      ally.downed = true;
+      this.log.push(`${ally.name} is downed.`);
+      this.paused = true;
+      this.log.push('PAUSED — ally downed.');
+    } else if (Math.random() < 0.35) {
+      const was = ally.bleeding;
+      ally.bleeding = true;
+      ally.bleedTicks = ally.bleedTicks ?? 0;
+      this.log.push(`${ally.name} is bleeding.`);
+      if (!was) {
+        this.paused = true;
+        this.log.push('PAUSED — new bleeding.');
+      }
+    }
+    this.checkEnd();
   }
 
   private makeAlly(p: PartyMember): Combatant {
@@ -181,8 +344,14 @@ export class CombatSession {
   }
 
   actionsFor(job: JobId): { id: CombatActionId; label: string; enabled: boolean }[] {
-    const a = this.activeAlly();
-    if (!a || a.memberId !== job) return [];
+    const a =
+      this.allies.find((x) => x.memberId === job && x.hp > 0 && !x.downed) ?? null;
+    if (!a) return [];
+    // Rounds mode: only the active ally may act.
+    if (this.mode === 'rounds') {
+      const cur = this.activeAlly();
+      if (!cur || cur.memberId !== job) return [];
+    }
     const inLoft = a.slot === 'loft';
     const flankOk = this.hasLoft || inLoft;
     switch (job) {
@@ -270,6 +439,24 @@ export class CombatSession {
   private afterPlayerAction(): void {
     this.checkEnd();
     if (this.over) return;
+    if (this._rtwpExecute || this.mode === 'rtwp') {
+      // Duration-based Hold/Brace under RTwP
+      const actor = this.activeAlly();
+      if (actor?.holding) {
+        this.holdRemain = 3;
+        this.sergeantHeldThisRound = true;
+      }
+      if (this.wagonBraced) this.braceRemain = 3;
+      // Auto-pause when ferry rope becomes cuttable
+      if (
+        this.encounter === 'ferry' &&
+        !this.ropeCut &&
+        (this.sergeantHeldThisRound || this.ferryWatchCleared)
+      ) {
+        /* stay as-is; player already paused often */
+      }
+      return;
+    }
     const next = this.nextAllyId(this.activeAllyId);
     if (next) {
       this.activeAllyId = next;
@@ -294,7 +481,15 @@ export class CombatSession {
   }
 
   act(action: CombatActionId, targetId?: string): void {
-    if (this.over || this.turn !== 'player') return;
+    if (this.over) return;
+    if (this.mode === 'rtwp' && !this._rtwpExecute) {
+      // UI buttons queue orders while paused (or replace while live)
+      const job = this.selectedAllyId ?? this.activeAllyId;
+      if (!job) return;
+      this.setOrder(job, action);
+      return;
+    }
+    if (this.turn !== 'player' && !this._rtwpExecute) return;
     const actor = this.activeAlly();
     if (!actor || !actor.memberId) return;
     const job = actor.memberId;
@@ -311,6 +506,7 @@ export class CombatSession {
       case 'hold': {
         actor.holding = true;
         this.sergeantHeldThisRound = true;
+        this.holdRemain = this.mode === 'rtwp' ? 3 : 0;
         this.log.push(`${actor.name} Holds the front line.`);
         break;
       }
@@ -367,7 +563,12 @@ export class CombatSession {
       }
       case 'brace_wagon': {
         this.wagonBraced = true;
-        this.log.push(`${actor.name} Braces the wagon — front hardens this round.`);
+        this.braceRemain = this.mode === 'rtwp' ? 3 : 0;
+        this.log.push(
+          this.mode === 'rtwp'
+            ? `${actor.name} Braces the wagon — front hardens briefly.`
+            : `${actor.name} Braces the wagon — front hardens this round.`
+        );
         break;
       }
       case 'bolt': {
@@ -387,6 +588,10 @@ export class CombatSession {
         this.badgesExposed = true;
         for (const e of this.enemies) e.badgesExposed = true;
         this.log.push(`${actor.name} Points — borrowed badges flash wrong. Clerk can Call out.`);
+        if (this.mode === 'rtwp') {
+          this.paused = true;
+          this.log.push('PAUSED — badges exposed.');
+        }
         break;
       }
       case 'call_out': {

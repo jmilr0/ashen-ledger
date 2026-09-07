@@ -1,0 +1,9 @@
+height_m=1.6600
+width_x_m=0.5207
+depth_y_m=0.4898
+tris=16100
+objects=Serena_Belt,Serena_Cloak,Serena_Gown,Serena_Head,Serena_Hood,Serena_Limbs,Serena_Mud,Serena_Pouch
+capsule_diameter_m=0.60
+formation_spacing_m=0.90 (context only)
+target_height_m=1.66
+look=Na Serena: hooded local noble/agent, muted wool gown, wax-and-mud cloak+hood, sealed pouch — elegance without glow

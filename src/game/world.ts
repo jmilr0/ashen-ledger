@@ -78,6 +78,13 @@ const PATH = {
   pilgrimBundle: './models/props/pilgrim_bundle.glb',
   waysideCross: './models/props/wayside_cross.glb',
   ferryBoat: './models/props/ferry_boat.glb',
+  // Building shells (Art exact names) — null-ok; replace Kenney/box when present
+  fontfroideDormer: './models/props/fontfroide_dormer.glb',
+  parishNaveShell: './models/props/parish_nave_shell.glb',
+  prioryRuinWall: './models/props/priory_ruin_wall.glb',
+  prioryNaveShell: './models/props/priory_nave_shell.glb',
+  roadHouseShell: './models/props/road_house_shell.glb',
+  goldsmithShopShell: './models/props/goldsmith_shop_shell.glb',
   // Kenney extras for zone densify (already licensed in repo)
   borderPillar: './models/graveyard/border-pillar.glb',
   lanternCandle: './models/graveyard/lantern-candle.glb',
@@ -184,7 +191,7 @@ export class World {
       g.userData.npcId = n.id;
       this.scene.add(g);
       this.npcMeshes.set(n.id, g);
-      this.addCircleCollider(n.x * TILE, n.z * TILE, n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.4);
+      this.addCircleCollider(n.x * TILE, n.z * TILE, n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.3);
     }
 
     // Follower capsules (Art owns final meshes — placeholders only)
@@ -498,7 +505,8 @@ export class World {
       b.position.set(px, h / 2, pz);
       b.castShadow = true;
       b.receiveShadow = true;
-      b.name = 'temp-building';
+      // South facade stubs near priory_door — stripped when Art priory shell ships
+      b.name = gz <= -4.0 ? 'temp-building-priory' : 'temp-building';
       this.scene.add(b);
       this.addBoxCollider(px, pz, w * 0.45, w * 0.8 * 0.45);
     }
@@ -780,6 +788,7 @@ export class World {
     if (this.zone === 'corbieres' || this.zone === 'act3_close') {
       // Stub maps — keep box geometry; optional priory kit / NPC GLBs when Art ships them.
       await this.tryHookPrioryKit();
+      await this.tryHookBuildingShells();
       await this.tryScatterZoneDressing();
       this.updateCamera();
       return;
@@ -854,7 +863,7 @@ export class World {
       this.addCircleCollider(
         n.x * TILE,
         n.z * TILE,
-        n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.4
+        n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.3
       );
     }
 
@@ -866,10 +875,11 @@ export class World {
     this.removeNamed('temp-arch');
 
     // Abbey / roadside stone structures (Kenney walls recolored toward dirt-and-mail)
-    this.placeBuilding(-5.0 * TILE * 0.85, -3.5 * TILE * 0.85, take, 'stone');
-    this.placeBuilding(-5.0 * TILE * 0.85, 0.5 * TILE * 0.85, take, 'stone');
-    this.placeBuilding(-5.0 * TILE * 0.85, 4.0 * TILE * 0.85, take, 'wood');
-    this.placeBuilding(5.0 * TILE * 0.85, -2.5 * TILE * 0.85, take, 'wood');
+    // Tags let Art building shells strip interim Kenney/box when GLBs appear
+    this.placeBuilding(-5.0 * TILE * 0.85, -3.5 * TILE * 0.85, take, 'stone', 'kenney-building-west');
+    this.placeBuilding(-5.0 * TILE * 0.85, 0.5 * TILE * 0.85, take, 'stone', 'kenney-building-west');
+    this.placeBuilding(-5.0 * TILE * 0.85, 4.0 * TILE * 0.85, take, 'wood', 'kenney-building-west');
+    this.placeBuilding(5.0 * TILE * 0.85, -2.5 * TILE * 0.85, take, 'wood', 'kenney-building-parish');
     this.placeBuilding(5.0 * TILE * 0.85, 2.5 * TILE * 0.85, take, 'wood');
     this.placeBuilding(1.5 * TILE * 0.85, 5.2 * TILE * 0.85, take, 'wood');
 
@@ -1005,6 +1015,10 @@ export class World {
       this.addBoxCollider(5.2 * TILE, 0.6 * TILE, 0.12, 0.7);
     }
 
+    // Building shells after Kenney composites so Art can strip tagged interim boxes
+    await this.tryHookBuildingShells();
+    this.rebindEnvPropColliders();
+
     this.updateCamera();
   }
 
@@ -1012,7 +1026,8 @@ export class World {
     x: number,
     z: number,
     take: (k: keyof typeof PATH) => THREE.Group | null,
-    kind: 'stone' | 'wood'
+    kind: 'stone' | 'wood',
+    tag = 'kenney-building'
   ): void {
     const wallA = kind === 'wood' ? take('wallBlock') : take('wallDoor') ?? take('wallBlock');
     const wallB = take('wallWindow') ?? take('wallBlock');
@@ -1028,12 +1043,14 @@ export class World {
       );
       b.position.set(x, h / 2, z);
       b.castShadow = true;
+      b.name = tag;
       this.scene.add(b);
       this.addBoxCollider(x, z, 0.8, 0.7);
       return;
     }
 
     const g = new THREE.Group();
+    g.name = tag;
     fitToHeight(wallA, 1.35);
     fitToHeight(wallB, 1.35);
     tintMeshes(wallA, kind === 'stone' ? 0x6a6860 : 0x5a4a38, 0.35);
@@ -1502,8 +1519,124 @@ export class World {
     await this.tryHookRoadDressingArt();
   }
 
+  /**
+   * Non-blocking building shells — Art exact names under props/.
+   * GD: doorways ≥1.2 m clear; wall colliders tight (no fat AABB into walk lane);
+   * replace Kenney/box when present. Rest/combat untouched.
+   */
+  private async tryHookBuildingShells(): Promise<void> {
+    const placeVisual = (
+      model: THREE.Group,
+      name: string,
+      x: number,
+      z: number,
+      h: number,
+      rot: number
+    ) => {
+      fitToHeight(model, h);
+      tintMeshes(model, 0x5a5848, 0.1);
+      model.position.set(x, 0, z);
+      model.rotation.y = rot;
+      model.name = name;
+      this.scene.add(model);
+    };
+
+    /** Wall strips only — leave ≥1.2 m doorway gap on the open face (local -Z). */
+    const placeWallColliders = (
+      x: number,
+      z: number,
+      halfW: number,
+      halfD: number,
+      wall = 0.28,
+      doorGap = 1.25
+    ) => {
+      const pier = Math.max(0.35, (halfW * 2 - doorGap) * 0.5);
+      // Front piers (doorway between)
+      this.addBoxCollider(x - (halfW - pier * 0.5), z - halfD + wall * 0.5, pier * 0.5, wall * 0.5);
+      this.addBoxCollider(x + (halfW - pier * 0.5), z - halfD + wall * 0.5, pier * 0.5, wall * 0.5);
+      // Back wall
+      this.addBoxCollider(x, z + halfD - wall * 0.5, halfW, wall * 0.5);
+      // Side walls
+      this.addBoxCollider(x - halfW + wall * 0.5, z, wall * 0.5, halfD - wall);
+      this.addBoxCollider(x + halfW - wall * 0.5, z, wall * 0.5, halfD - wall);
+    };
+
+    if (this.zone === 'act1_road') {
+      const cellarer = this.activeNpcs.find((n) => n.id === 'cellarer');
+      const cx = (cellarer?.x ?? -3.2) * TILE;
+      const cz = (cellarer?.z ?? -1.2) * TILE;
+      // West of ditch / walk lane — Fontfroide dormer bay
+      const dormer = await loadModel(PATH.fontfroideDormer);
+      if (dormer) {
+        this.removeNamed('kenney-building-west');
+        const x = cx - 1.55;
+        const z = cz - 0.35;
+        placeVisual(dormer, 'fontfroide-dormer-art', x, z, 3.5, Math.PI * 0.06);
+        placeWallColliders(x, z, 1.35, 1.05);
+      }
+
+      const parish = this.activeNpcs.find((n) => n.id === 'parish');
+      const px = (parish?.x ?? 0.8) * TILE;
+      const pz = (parish?.z ?? -2.6) * TILE;
+      const nave = await loadModel(PATH.parishNaveShell);
+      if (nave) {
+        this.removeNamed('kenney-building-parish');
+        // Behind porch; road strip stays clear for two-abreast + followers
+        const x = px + 0.2;
+        const z = pz - 1.85;
+        placeVisual(nave, 'parish-nave-shell-art', x, z, 4.0, Math.PI * 0.08);
+        placeWallColliders(x, z, 1.7, 1.15, 0.3, 1.3);
+      }
+
+      const mold = this.activeNpcs.find((n) => n.id === 'mold');
+      const mx = (mold?.x ?? 3.5) * TILE;
+      const mz = (mold?.z ?? 0.8) * TILE;
+      const shop = await loadModel(PATH.goldsmithShopShell);
+      if (shop) {
+        const x = mx + 0.9;
+        const z = mz + 0.2;
+        placeVisual(shop, 'goldsmith-shop-shell-art', x, z, 2.8, -0.2);
+        placeWallColliders(x, z, 1.1, 0.95, 0.26, 1.2);
+      }
+
+      // East roadside house — off walk lane
+      const house = await loadModel(PATH.roadHouseShell);
+      if (house) {
+        const x = 4.55;
+        const z = 1.6;
+        placeVisual(house, 'road-house-shell-art', x, z, 2.9, -Math.PI * 0.5);
+        placeWallColliders(x, z, 1.05, 0.95, 0.26, 1.2);
+      }
+    }
+
+    if (this.zone === 'corbieres') {
+      const door = this.activeNpcs.find((n) => n.id === 'priory_door');
+      const dx = (door?.x ?? -2.2) * TILE;
+      const dz = (door?.z ?? -3.5) * TILE;
+
+      const nave = await loadModel(PATH.prioryNaveShell);
+      if (nave) {
+        this.removeNamed('temp-building-priory');
+        const x = dx - 0.15;
+        const z = dz - 1.25;
+        placeVisual(nave, 'priory-nave-shell-art', x, z, 3.6, Math.PI * 0.04);
+        placeWallColliders(x, z, 1.55, 1.2, 0.28, 1.3);
+      }
+
+      const ruin = await loadModel(PATH.prioryRuinWall);
+      if (ruin) {
+        // Flank wall — tight strip, leave approach to door ≥1.2 m
+        const x = dx + 2.4;
+        const z = dz - 0.6;
+        placeVisual(ruin, 'priory-ruin-wall-art', x, z, 2.8, Math.PI * 0.5);
+        this.addBoxCollider(x, z, 0.22, 1.1);
+      }
+    }
+  }
+
   /** Non-blocking Art road props — exact names under props/; GD collision rules. */
   private async tryHookRoadDressingArt(): Promise<void> {
+  
     if (this.zone !== 'act1_road') return;
 
     const cart = (await loadModel(PATH.roadCart)) ?? (await loadModel(PATH.cart));

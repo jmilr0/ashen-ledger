@@ -1,0 +1,9 @@
+height_m=1.6800
+width_x_m=0.5227
+depth_y_m=0.3365
+tris=11540
+objects=Berna_Belt,Berna_Head,Berna_Kit,Berna_Limbs,Berna_Shawl,Berna_Tunic,Berna_Vest
+capsule_diameter_m=0.60
+formation_spacing_m=0.90 (context only)
+target_height_m=1.68
+look=Corbières yard contact: lean wool tunic, worn leather vest, shoulder shawl, pouch+cup+knife — practical local host

@@ -1,0 +1,9 @@
+height_m=1.7800
+width_x_m=0.5800
+depth_y_m=0.3691
+tris=13262
+objects=Hugues_Belt,Hugues_Coif,Hugues_Hauberk,Hugues_Head,Hugues_Kit,Hugues_Limbs,Hugues_Surcoat,Hugues_Sword
+capsule_diameter_m=0.60
+formation_spacing_m=0.90 (context only)
+target_height_m=1.78
+look=Northern captain: mail hauberk+coif, slate surcoat with dull cloth mark, belt sword, campaign kit — dull iron not chrome

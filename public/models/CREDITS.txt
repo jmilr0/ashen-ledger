@@ -17,6 +17,12 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   cloister_arcade (tools/make_cloister_arcade.py) — Fontfroide Cistercian cloister bay, limestone + gravel;
   cloister_well (tools/make_cloister_well.py) — cloister yard well/lavabo, iron crank, mud splash;
   leper_rest (tools/make_leper_rest.py) — Act III leper-house Rest cot, linen, basin, willow sprig.
+  road_cart (tools/make_road_cart.py) — worn pilgrim/ox cart, muddy wheels, hemp sacks;
+  road_fence_run (tools/make_road_fence_run.py) — modular dry-stone + oak stake fence (~3.5 m);
+  mud_rut_patch (tools/make_mud_rut_patch.py) — flat dual cart-rut mud decal;
+  pilgrim_bundle (tools/make_pilgrim_bundle.py) — packs, gourd, blanket, leaning staff;
+  wayside_cross (tools/make_wayside_cross.py) — weathered oak wayside cross, no glow;
+  ferry_boat (tools/make_ferry_boat.py) — flat scow ferry boat (pairs with ferry_rope).
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
 
 INTERIM (not final Art) — Berna/Hugues/Serena NPC meshes:
@@ -27,6 +33,9 @@ INTERIM (not final Art) — Berna/Hugues/Serena NPC meshes:
 Art path hooks (optional drops, non-blocking):
   props/: mile_marker, mold_cavity, cloister_arcade, cloister_well, leper_rest,
     road_cart, road_fence_run, mud_rut_patch, pilgrim_bundle, wayside_cross, ferry_boat;
+  building shells (exact): fontfroide_dormer, parish_nave_shell, priory_ruin_wall,
+    priory_nave_shell, road_house_shell, goldsmith_shop_shell — replace Kenney/box when present;
   characters/: narbonne_agent (or narbonne_courier / hooded_courier), badge_bandit*.glb,
-    berna/hugues/serena (optional named).
-  GD: cart/fence colliders off walk lane; mud_rut_patch + pilgrim_bundle visual-only.
+    berna/hugues/serena (prefer Art; else brin/rowan/mirelle interim remaps).
+  GD: cart/fence colliders off walk lane; mud_rut_patch + pilgrim_bundle visual-only;
+    shell doorways ≥1.2 m clear; wall colliders tight; NPC capsules ~0.6 m.

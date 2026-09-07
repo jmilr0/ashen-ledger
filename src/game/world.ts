@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { NPCS } from './data';
+import { npcsForZone } from './data';
 import { fitToHeight, loadModel, tintMeshes } from './assets';
+import type { JobId, MapZone, NpcDef } from './types';
+import { SELECT_ORDER } from './types';
 
 const TILE = 1.2;
 const GRID = 11; // -5..5
@@ -47,7 +49,12 @@ export class World {
   private ground!: THREE.Mesh;
   private playerMesh!: THREE.Group;
   private npcMeshes = new Map<string, THREE.Group>();
+  private followerMeshes = new Map<JobId, THREE.Group>();
   private pathTarget: THREE.Vector3 | null = null;
+  private zone: MapZone = 'act1_road';
+  private activeNpcs: NpcDef[] = [];
+  private controlledId: JobId = 'clerk';
+  private followerTrail: JobId[] = [];
   private readonly moveSpeed = 4.5;
   private marker!: THREE.Mesh;
   private clock = new THREE.Clock();
@@ -61,10 +68,14 @@ export class World {
   playerZ = 2;
   onArrive: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, zone: MapZone = 'act1_road') {
+    this.zone = zone;
+    this.activeNpcs = npcsForZone(zone);
     // Winter day — cold, muted, no gothic magic glow
-    this.scene.background = new THREE.Color(0x6a7078);
-    this.scene.fog = new THREE.FogExp2(0x8a9098, 0.028);
+    const bg = zone === 'corbieres' ? 0x5a6068 : 0x6a7078;
+    const fog = zone === 'corbieres' ? 0x7a8088 : 0x8a9098;
+    this.scene.background = new THREE.Color(bg);
+    this.scene.fog = new THREE.FogExp2(fog, zone === 'corbieres' ? 0.032 : 0.028);
 
     const aspect = window.innerWidth / window.innerHeight;
     const frustum = this.frustumSize;
@@ -87,18 +98,21 @@ export class World {
     this.renderer.toneMappingExposure = 0.95;
 
     this.setupLights();
-    this.buildBaseHub();
+    if (zone === 'corbieres') this.buildCorbieresHub();
+    else this.buildBaseHub();
 
     this.playerMesh = this.makeCharacter(0x6a5a48, 0.55);
     this.scene.add(this.playerMesh);
     this.setPlayerPos(this.playerX, this.playerZ);
 
-    for (const n of NPCS) {
+    for (const n of this.activeNpcs) {
       let g: THREE.Group;
       if (n.id === 'ferry') {
         g = this.makeFerryPlaceholder();
       } else if (n.id === 'bandits') {
         g = this.makeBanditPlaceholder(n.color);
+      } else if (n.id === 'priory_door' || n.id === 'corbieres_road') {
+        g = this.makeDoorPlaceholder(n.color);
       } else if (n.id === 'mold') {
         g = this.makeCharacter(n.color, 0.52);
       } else {
@@ -108,7 +122,22 @@ export class World {
       g.userData.npcId = n.id;
       this.scene.add(g);
       this.npcMeshes.set(n.id, g);
-      this.addCircleCollider(n.x * TILE, n.z * TILE, n.id === 'ferry' ? 0.55 : 0.4);
+      this.addCircleCollider(n.x * TILE, n.z * TILE, n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.4);
+    }
+
+    // Follower capsules (Art owns final meshes — placeholders only)
+    const followerColors: Record<JobId, number> = {
+      guide: 0x6a5038,
+      sergeant: 0x4a4858,
+      convers: 0x5a5040,
+      clerk: 0x6a5a48,
+      surgeon: 0x4a5848,
+    };
+    for (const id of SELECT_ORDER) {
+      const f = this.makeCharacter(followerColors[id], 0.45);
+      f.visible = false;
+      this.scene.add(f);
+      this.followerMeshes.set(id, f);
     }
 
     const mGeo = new THREE.RingGeometry(0.15, 0.28, 24);
@@ -321,7 +350,98 @@ export class World {
     this.scene.add(grid);
   }
 
-  private makeChestPlaceholder(): THREE.Group {
+  /** Act II scaffold — Corbières priory road (placeholder geometry). */
+  private buildCorbieresHub(): void {
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x4a4840,
+      roughness: 0.96,
+      metalness: 0.02,
+    });
+    const geo = new THREE.PlaneGeometry(GRID * TILE, GRID * TILE);
+    geo.rotateX(-Math.PI / 2);
+    this.ground = new THREE.Mesh(geo, groundMat);
+    this.ground.receiveShadow = true;
+    this.ground.name = 'ground';
+    this.scene.add(this.ground);
+
+    const road = new THREE.Mesh(
+      new THREE.BoxGeometry(1.8, 0.04, GRID * TILE),
+      new THREE.MeshStandardMaterial({ color: 0x3a3830, roughness: 0.98 })
+    );
+    road.position.set(0, 0.02, 0);
+    road.receiveShadow = true;
+    this.scene.add(road);
+
+    // Scrub hills / rock stubs
+    const rocks: Array<[number, number, number, number]> = [
+      [-4.2, -2.0, 1.6, 1.4],
+      [4.0, -1.5, 1.8, 1.6],
+      [-3.5, 3.0, 1.4, 1.2],
+      [3.8, 2.8, 1.5, 1.3],
+      [-1.8, -4.2, 2.2, 1.8],
+      [1.8, -4.0, 2.0, 1.7],
+    ];
+    for (const [gx, gz, w, h] of rocks) {
+      const b = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, w * 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x5a5850, roughness: 0.92 })
+      );
+      const px = gx * TILE * 0.85;
+      const pz = gz * TILE * 0.85;
+      b.position.set(px, h / 2, pz);
+      b.castShadow = true;
+      b.receiveShadow = true;
+      b.name = 'temp-building';
+      this.scene.add(b);
+      this.addBoxCollider(px, pz, w * 0.45, w * 0.8 * 0.45);
+    }
+
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 560;
+    labelCanvas.height = 64;
+    const ctx = labelCanvas.getContext('2d')!;
+    ctx.fillStyle = 'rgba(40,36,30,0.55)';
+    ctx.fillRect(0, 0, 560, 64);
+    ctx.fillStyle = '#c8c0b0';
+    ctx.font = '26px Georgia, serif';
+    ctx.fillText('Corbières priory road  [ACT II STUB — ART PLACEHOLDER]', 12, 42);
+    const tex = new THREE.CanvasTexture(labelCanvas);
+    const label = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.2, 0.8),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+    );
+    label.position.set(0, 0.05, 5.5);
+    label.rotation.x = -Math.PI / 2;
+    label.name = 'art-label';
+    this.scene.add(label);
+
+    const grid = new THREE.GridHelper(GRID * TILE, GRID, 0x3a3830, 0x3a3830);
+    grid.position.y = 0.01;
+    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.Material).opacity = 0.16;
+    this.scene.add(grid);
+  }
+
+  private makeDoorPlaceholder(color: number): THREE.Group {
+    const g = new THREE.Group();
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 2.2, 0.35),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.9 })
+    );
+    frame.position.y = 1.1;
+    frame.castShadow = true;
+    const plank = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 1.6, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x3a3020, roughness: 0.95 })
+    );
+    plank.position.set(0, 0.95, 0.2);
+    plank.castShadow = true;
+    g.add(frame, plank);
+    g.name = 'door-placeholder';
+    return g;
+  }
+
+    private makeChestPlaceholder(): THREE.Group {
     const g = new THREE.Group();
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 0.4, 0.45),
@@ -386,6 +506,11 @@ export class World {
   }
 
   private async polishWithModels(): Promise<void> {
+    if (this.zone === 'corbieres') {
+      // Stub map — keep box geometry; Art will own meshes later.
+      this.updateCamera();
+      return;
+    }
     const urls = [
       PATH.player,
       PATH.cellarer,
@@ -422,8 +547,12 @@ export class World {
     this.colliders = [];
     this.addAABB(-4.2, -3.0, -GRID * TILE * 0.45, -0.9);
     this.addAABB(-4.2, -3.0, 0.9, GRID * TILE * 0.45);
-    for (const n of NPCS) {
-      this.addCircleCollider(n.x * TILE, n.z * TILE, n.id === 'ferry' ? 0.55 : 0.4);
+    for (const n of this.activeNpcs) {
+      this.addCircleCollider(
+        n.x * TILE,
+        n.z * TILE,
+        n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.4
+      );
     }
 
     this.removeNamed('temp-building');
@@ -661,6 +790,41 @@ export class World {
     return g;
   }
 
+  setControlled(id: JobId, trail: JobId[]): void {
+    this.controlledId = id;
+    this.followerTrail = trail;
+    this.layoutFollowers(true);
+  }
+
+  private layoutFollowers(snap: boolean): void {
+    const px = this.playerMesh.position.x;
+    const pz = this.playerMesh.position.z;
+    const facing = this.playerMesh.rotation.y;
+    const backX = -Math.sin(facing);
+    const backZ = -Math.cos(facing);
+    for (const id of SELECT_ORDER) {
+      const mesh = this.followerMeshes.get(id);
+      if (!mesh) continue;
+      if (id === this.controlledId || !this.followerTrail.includes(id)) {
+        mesh.visible = false;
+        continue;
+      }
+      mesh.visible = true;
+      const slot = this.followerTrail.indexOf(id);
+      const dist = 0.9 * (slot + 1);
+      const side = slot % 2 === 0 ? -0.25 : 0.25;
+      const tx = px + backX * dist + Math.cos(facing) * side;
+      const tz = pz + backZ * dist + Math.sin(facing) * side;
+      if (snap) {
+        mesh.position.set(tx, 0, tz);
+      } else {
+        mesh.position.x += (tx - mesh.position.x) * 0.18;
+        mesh.position.z += (tz - mesh.position.z) * 0.18;
+      }
+      mesh.rotation.y = facing;
+    }
+  }
+
   setPlayerPos(x: number, z: number): void {
     this.playerX = x;
     this.playerZ = z;
@@ -693,7 +857,7 @@ export class World {
     return hits[0].point.clone();
   }
 
-  pickNpc(clientX: number, clientY: number): (typeof NPCS)[number] | null {
+  pickNpc(clientX: number, clientY: number): NpcDef | null {
     this.pointer.x = (clientX / window.innerWidth) * 2 - 1;
     this.pointer.y = -(clientY / window.innerHeight) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -707,7 +871,7 @@ export class World {
     while (obj) {
       if (obj.userData?.npcId) {
         const id = obj.userData.npcId as string;
-        return NPCS.find((n) => n.id === id) ?? null;
+        return this.activeNpcs.find((n) => n.id === id) ?? null;
       }
       obj = obj.parent;
     }
@@ -723,12 +887,12 @@ export class World {
     this.marker.visible = true;
   }
 
-  nearestNpc(maxDist = 1.6): (typeof NPCS)[number] | null {
-    let best: (typeof NPCS)[number] | null = null;
+  nearestNpc(maxDist = 1.6): NpcDef | null {
+    let best: NpcDef | null = null;
     let bestD = maxDist;
     const px = this.playerX * TILE;
     const pz = this.playerZ * TILE;
-    for (const n of NPCS) {
+    for (const n of this.activeNpcs) {
       const m = this.npcMeshes.get(n.id);
       if (m && !m.visible) continue;
       const dx = n.x * TILE - px;
@@ -750,6 +914,7 @@ export class World {
     }
 
     if (!this.pathTarget) {
+      this.layoutFollowers(false);
       this.updateCamera();
       return;
     }
@@ -781,6 +946,7 @@ export class World {
     }
     this.playerX = pos.x / TILE;
     this.playerZ = pos.z / TILE;
+    this.layoutFollowers(false);
     this.updateCamera();
   }
 

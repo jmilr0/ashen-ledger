@@ -117,3 +117,44 @@ html, body, #app {
 .enemy-chip.active-ally { border-color: #a09060; background: #2a2820; }
 .stub-note { opacity: 0.55; font-size: 0.75rem; }
 .combat-meta { margin-bottom: 0.45rem; opacity: 0.8; }
+
+
+#journal-panel {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100% - 2rem)); max-height: 80vh; overflow: auto;
+  padding: 1.1rem 1.2rem 1.2rem;
+}
+.journal-list { display: flex; flex-direction: column; gap: 0.65rem; margin: 0.85rem 0 1rem; }
+.journal-entry {
+  padding: 0.55rem 0.7rem; background: rgba(255,255,255,0.03); border: 1px solid #3a2a1a;
+}
+.journal-entry p { margin-top: 0.35rem; line-height: 1.4; font-size: 0.92rem; opacity: 0.92; }
+.journal-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; }
+.journal-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
+.journal-entry.status-done { border-color: #4a5a3a; }
+.journal-entry.status-failed { border-color: #6a3030; }
+.journal-entry.status-active { border-color: #8a6540; }
+
+#hud .party-strip {
+  position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 0.35rem; pointer-events: auto; flex-wrap: wrap; justify-content: center;
+  max-width: calc(100% - 1.5rem);
+}
+.portrait {
+  display: flex; gap: 0.4rem; align-items: center; text-align: left;
+  background: rgba(20,16,12,0.88); color: #e8dcc8; border: 1px solid #5a4030;
+  padding: 0.35rem 0.45rem; cursor: pointer; font: inherit; min-width: 7.5rem;
+}
+.portrait:hover { border-color: #c49a6c; }
+.portrait.active { border-color: #c8b070; box-shadow: 0 0 0 1px #a09060; }
+.portrait.dead { opacity: 0.4; cursor: default; }
+.portrait-swatch { width: 1.1rem; height: 1.1rem; border: 1px solid #2a2018; flex-shrink: 0; }
+.portrait-meta { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.78rem; }
+.portrait-meta .bar { width: 5.5rem; }
+.bag-pip {
+  display: inline-block; margin-left: 0.35rem; padding: 0 0.25rem;
+  font-size: 0.65rem; background: #5a3020; border: 1px solid #a06040; border-radius: 2px;
+}
+.member-card.controlled { border-color: #c8b070; }
+.combat-portraits .enemy-chip { cursor: pointer; }
+.combat-portraits .enemy-chip:disabled { opacity: 0.45; cursor: default; }

@@ -1,6 +1,15 @@
-import type { DialogueNode, Item, PartyMember } from './types';
+import type { DialogueNode, Item, MapZone, NpcDef, PartyMember } from './types';
 
 export const PLAYER_START = { x: 0, z: 3 };
+export const CORBIERES_START = { x: 0, z: 2 };
+
+export const JOB_PORTRAIT_COLOR: Record<string, string> = {
+  guide: '#6a5038',
+  sergeant: '#4a4858',
+  convers: '#5a5040',
+  clerk: '#6a5a48',
+  surgeon: '#4a5848',
+};
 
 /** Default formation L→R facing: guide · sergeant · convers · clerk · surgeon */
 export function createDefaultParty(): PartyMember[] {
@@ -89,6 +98,9 @@ export const DEFAULT_FLAGS: Record<string, boolean | string | number> = {
   narbonne_outcome: '',
   talked_parish: false,
   talked_narbonne: false,
+  act1_complete: false,
+  map_zone: 'act1_road',
+  combat_mode: 'rtwp',
 };
 
 export const DIALOGUES: Record<string, DialogueNode[]> = {
@@ -358,6 +370,36 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
       choices: [{ text: '(Leave)', effect: 'end' }],
     },
   ],
+  corbieres_road: [
+    {
+      id: 'start',
+      speaker: 'Hill Road',
+      text: 'Mud thins to scrub. The ruined priory sits east in the Corbières — Act II ground. Walk the stub road, or stay in Narbonne’s dust.',
+      choices: [
+        { text: 'Take the Corbières road.', effect: 'enter_corbieres' },
+        { text: '(Stay)', effect: 'end' },
+      ],
+    },
+  ],
+  priory_stub: [
+    {
+      id: 'start',
+      speaker: 'Priory Gate [Narrative]',
+      text: 'Weathered boards. No mass, no legate, no Act II script yet — Engineering scaffold only. Narrative owns the door.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  road_back_narbonne: [
+    {
+      id: 'start',
+      speaker: 'Road West',
+      text: 'Back toward Narbonne and the Aude road.',
+      choices: [
+        { text: 'Return to the Act I road.', effect: 'enter_act1_road' },
+        { text: '(Stay)', effect: 'end' },
+      ],
+    },
+  ],
 };
 
 export const NPCS = [
@@ -422,8 +464,43 @@ export const NPCS = [
     name: 'Narbonne Agent',
     color: 0x3a4858,
     x: -1.2,
-    z: -6.2,
+    z: -4.8,
     dialogueId: 'narbonne_agent',
     hint: 'Deliver the letter',
   },
-] as const;
+  {
+    id: 'corbieres_road',
+    name: 'Road to Corbières',
+    color: 0x4a4030,
+    x: -2.8,
+    z: -5.0,
+    dialogueId: 'corbieres_road',
+    hint: 'Hill road to Corbières (Act II stub)',
+  },
+] as const satisfies readonly NpcDef[];
+
+export const CORBIERES_NPCS = [
+  {
+    id: 'priory_door',
+    name: 'Priory Gate [Narrative]',
+    color: 0x5a5848,
+    x: 0.0,
+    z: -3.2,
+    dialogueId: 'priory_stub',
+    hint: 'Priory door — Narrative stub',
+  },
+  {
+    id: 'road_back',
+    name: 'Road to Narbonne',
+    color: 0x4a4030,
+    x: 0.0,
+    z: 3.5,
+    dialogueId: 'road_back_narbonne',
+    hint: 'Return toward Narbonne',
+  },
+] as const satisfies readonly NpcDef[];
+
+export function npcsForZone(zone: MapZone): NpcDef[] {
+  return zone === 'corbieres' ? [...CORBIERES_NPCS] : [...NPCS];
+}
+

@@ -59,6 +59,10 @@ export class CombatSession {
   /** Selected portrait under pause (reuse as activeAllyId for UI). */
   selectedAllyId: JobId | null = null;
   private holdRemain = 0;
+  /** Seconds of Hold remaining (RTwP) — UI pip. */
+  get holdSeconds(): number {
+    return this.holdRemain;
+  }
   private braceRemain = 0;
   private bleedAcc = 0;
   private skirmishTime = 0;
@@ -150,7 +154,7 @@ export class CombatSession {
         a.recoverUntil = 0;
       }
       for (const e of this.enemies) {
-        e.recoverUntil = 0.8 + Math.random() * 0.6;
+        e.recoverUntil = 1.8 + Math.random() * 0.4;
       }
     }
   }
@@ -191,7 +195,6 @@ export class CombatSession {
 
   /**
    * RTwP live tick. No-op when paused, over, or rounds mode.
-   * TODO(GD feel-pass): tune recover / Hold duration once pause+portraits clickable.
    */
   update(dt: number): void {
     if (this.over || this.mode !== 'rtwp' || this.paused) return;
@@ -456,14 +459,6 @@ export class CombatSession {
         this.sergeantHeldThisRound = true;
       }
       if (this.wagonBraced) this.braceRemain = 3;
-      // Auto-pause when ferry rope becomes cuttable
-      if (
-        this.encounter === 'ferry' &&
-        !this.ropeCut &&
-        (this.sergeantHeldThisRound || this.ferryWatchCleared)
-      ) {
-        /* stay as-is; player already paused often */
-      }
       return;
     }
     const next = this.nextAllyId(this.activeAllyId);
@@ -517,6 +512,7 @@ export class CombatSession {
         this.sergeantHeldThisRound = true;
         this.holdRemain = this.mode === 'rtwp' ? 3 : 0;
         this.log.push(`${actor.name} Holds the front line.`);
+        this.pauseForCut('hold');
         break;
       }
       case 'thrust': {
@@ -690,6 +686,20 @@ export class CombatSession {
     }
   }
 
+  /** RTwP: stop the clock so Convers can queue Cut without racing Hold's 3s window. */
+  private pauseForCut(reason: 'hold' | 'watch'): void {
+    if (this.mode !== 'rtwp' || this.over || this.ropeCut) return;
+    if (this.encounter !== 'ferry' && this.encounter !== 'hold_door') return;
+    this.paused = true;
+    const cutHint =
+      this.encounter === 'hold_door' ? 'Open the sheep-gate' : 'Cut the rope';
+    if (reason === 'hold') {
+      this.log.push(`Hold up — ${cutHint}.`);
+    } else {
+      this.log.push(`Watch clear — ${cutHint}.`);
+    }
+  }
+
   private checkEnd(): void {
     if (this.encounter === 'ferry' || this.encounter === 'hold_door') {
       if (this.ropeCut) {
@@ -701,6 +711,7 @@ export class CombatSession {
       if (!this.living('enemies').length && !this.ferryWatchCleared) {
         this.ferryWatchCleared = true;
         this.log.push('River watch down — rope still binds the crossing. Cut it.');
+        this.pauseForCut('watch');
       }
       if (!this.living('allies').length) {
         this.over = true;

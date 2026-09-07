@@ -1048,13 +1048,32 @@ export class Game {
         return `<div class="enemy-chip">${e.name} HP ${e.hp}/${e.maxHp}${tags ? ' · ' + tags : ''}</div>`;
       })
       .join('');
+    const orderLabel = (id: string): string => {
+      const map: Record<string, string> = {
+        hold: 'Hold line',
+        cut_rope: c.encounter === 'hold_door' ? 'Open sheep-gate' : 'Cut rope',
+        thrust: 'Thrust',
+        point: 'Point',
+        call_out: 'Call out',
+        bolt: 'Bolt',
+        brace: 'Brace',
+        stabilize: 'Stabilize',
+        tend: 'Tend',
+        wait: 'Wait',
+        shove: 'Shove',
+        show_seal: 'Show seal',
+      };
+      return map[id] ?? id;
+    };
     const allies = c.allies
       .map((a) => {
         const selected = a.memberId === (c.selectedAllyId ?? c.activeAllyId);
+        const holdPip =
+          a.holding && c.holdSeconds > 0 ? `Hold ${c.holdSeconds.toFixed(1)}s` : a.holding ? 'Hold' : '';
         const tags = [
           a.slot ?? '',
-          a.holding ? 'Hold' : '',
-          a.order ? `order:${a.order}` : '',
+          holdPip,
+          a.order ? orderLabel(a.order) : '',
           a.bleeding ? `bleed ${a.bleedTicks ?? 0}/2` : '',
           a.downed ? 'downed' : '',
           selected ? (rtwp ? 'selected' : 'your move') : '',

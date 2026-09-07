@@ -710,7 +710,11 @@ export class CombatSession {
       // Kill-all stresses/opens Cut but does not end the fight — victory is ropeCut only.
       if (!this.living('enemies').length && !this.ferryWatchCleared) {
         this.ferryWatchCleared = true;
-        this.log.push('River watch down — rope still binds the crossing. Cut it.');
+        this.log.push(
+          this.encounter === 'hold_door'
+            ? 'Nave watch down — sheep-gate still latched. Open it.'
+            : 'River watch down — rope still binds the crossing. Cut it.'
+        );
         this.pauseForCut('watch');
       }
       if (!this.living('allies').length) {

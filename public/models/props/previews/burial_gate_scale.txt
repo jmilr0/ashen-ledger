@@ -1,0 +1,10 @@
+height_m=1.8641
+width_x_m=3.6590
+depth_y_m=0.5392
+tris=1460
+objects=Gate_Leaf,Gate_Lock,Gate_Posts,Gate_Walls
+origin=ground_center_between_posts
+collision=tight_to_mesh
+interact_latch_note=~1.2x generous RMB latch only (not collider shell)
+opening_m~=1.90 locked=bar+chain+padlock
+style=churchyard_iron_wood_occitan_1208

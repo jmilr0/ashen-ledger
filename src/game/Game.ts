@@ -170,6 +170,7 @@ export class Game {
     this.mapZone = (data.mapZone || (this.flags.map_zone as MapZone) || 'act1_road') as MapZone;
     this.flags.map_zone = this.mapZone;
     this.controlledId = this.resolveControlled(data.controlledId);
+    this.refreshStoryBeatOnLoad();
     this.enterHub(data.playerX, data.playerZ);
   }
 
@@ -613,6 +614,7 @@ export class Game {
     this.dialogueNode = tree.find((n) => n.id === startId) ?? tree[0];
     this.dialogueNode = this.maybeAutoPilgrimClose(this.dialogueNode);
     this.dialogueNode = this.maybeAct3Variants(this.dialogueNode, id);
+    this.dialogueNode = this.maybeContinuityLines(this.dialogueNode, id);
     this.screen = 'dialogue';
     this.drawDialogue();
   }
@@ -724,6 +726,81 @@ export class Game {
     if (this.flags[flagKey]) return;
     this.flags[flagKey] = true;
     this.toast(line);
+  }
+
+  /** 08-zone-transitions: restore objective if save landed mid-zone with a stale beat. */
+  private refreshStoryBeatOnLoad(): void {
+    if (this.flags.act3_done) return; // keep closing splinter beat
+    const zone = this.mapZone;
+    const beat = (this.storyBeat || '').trim();
+    const stale =
+      !beat ||
+      beat.includes('(Act II stub)') ||
+      beat === 'Back on the Fontfroide–Narbonne road.' ||
+      beat === 'Fontfroide. Take the chest. Do not break the true seal.';
+    if (zone === 'corbieres' && !this.flags.act2_beat) {
+      this.storyBeat =
+        'Corbières priory. Splinter on a false altar — northern captain wants the ruin as a warrant.';
+      return;
+    }
+    if (zone === 'corbieres' && stale) {
+      const path = String(this.flags.priory_path || '');
+      const deal = String(this.flags.captain_deal || 'none');
+      if (deal !== 'none') {
+        this.storyBeat =
+          'Priory settled with Hugues. Speak Na Serena for the lord’s name — Act III seed.';
+      } else if (path === 'hold_door') {
+        this.storyBeat = 'Nave door held. Column / locals through the sheep-gate — then the loft.';
+      } else if (path === 'steal') {
+        this.storyBeat = 'Chest taken quiet. Get out the sheep-gate before the loft notices.';
+      } else if (path === 'talk') {
+        this.storyBeat = 'Crowd thinning. Hold the yard or let Hugues claim the stones.';
+      } else {
+        this.storyBeat =
+          'Corbières priory. Splinter on a false altar — northern captain wants the ruin as a warrant.';
+      }
+      return;
+    }
+    if (zone === 'act3_close' && !this.flags.act3_done) {
+      const ab = String(this.flags.act3_beat || 'river');
+      if (ab === 'leper') this.storyBeat = 'Infirmary roof. Boil linen — or move before dawn.';
+      else if (ab === 'lord') this.storyBeat = 'Hill house next — hide, hang, or empty rumor.';
+      else if (ab === 'splinter' || ab === 'close')
+        this.storyBeat = 'Decide the wood — altar, pine, quiet snap, or bag.';
+      else this.storyBeat = 'Act III. Names, then the splinter — altar or pine in the square.';
+    }
+  }
+
+  /** 08 continuity one-liners when revisiting Act I NPCs (no new flags). */
+  private maybeContinuityLines(node: DialogueNode | null, id: string): DialogueNode | null {
+    if (!node || node.id !== 'after') return node;
+    const act2 = !!this.flags.act2_beat || !!this.flags.priory_path;
+    const act3Open = !!this.flags.talked_serena || !!this.flags.act3_beat;
+    if (id === 'cellarer' && act2) {
+      return {
+        ...node,
+        text: 'Hill dust on you. The chest still wrong?',
+        choices: [{ text: '(Leave)', effect: 'end' }],
+      };
+    }
+    if (id === 'pilgrim_mairia' && (act2 || act3Open)) {
+      const trust = Number(this.flags.pilgrim_trust) || 0;
+      const text =
+        trust >= 2 && !this.flags.act3_done
+          ? 'We still eat. Don’t bring captains to our fire.'
+          : trust <= 0
+            ? 'Keep walking. The column remembers the porch.'
+            : node.text;
+      return { ...node, text, choices: [{ text: '(Leave)', effect: 'end' }] };
+    }
+    if (id === 'narbonne_agent' && this.flags.talked_narbonne && !this.flags.act3_done) {
+      return {
+        ...node,
+        text: 'Letter’s filed. Wood’s your problem now.',
+        choices: [{ text: '(Leave)', effect: 'end' }],
+      };
+    }
+    return node;
   }
 
   private adjustTrust(delta: number): void {
@@ -1116,7 +1193,11 @@ export class Game {
       this.flags.map_zone = 'act3_close';
       if (!this.flags.act3_beat) this.flags.act3_beat = 'river';
       this.storyBeat = 'Act III. Names, then the splinter — altar or pine in the square.';
-      this.toast('Act III close — willows, leper, lord, splinter.');
+      this.barkOnce('enter_act3_river', 'Arnau: Wood or politics next. Don’t rush the wax.');
+      if (this.flags.talked_leper || this.flags.bark_rest_leper) {
+        this.barkOnce('enter_act3_after_leper', 'Elias: Bleeds quiet. Don’t open them for sport.');
+      }
+      this.maybeJournalDoneToast();
       this.applyNpcVisibility();
       this.persist();
       this.closeDialogue();
@@ -1292,11 +1373,13 @@ export class Game {
       this.mapZone = 'corbieres';
       this.flags.map_zone = 'corbieres';
       this.flags.act1_complete = true;
-      this.flags.act2_beat = 'road';
-      this.storyBeat =
-        'Corbières priory. Splinter on a false altar — northern captain wants the ruin as a warrant.';
+      if (!this.flags.act2_beat) this.flags.act2_beat = 'road';
+      if (!this.flags.priory_path && String(this.flags.captain_deal || 'none') === 'none') {
+        this.storyBeat =
+          'Corbières priory. Splinter on a false altar — northern captain wants the ruin as a warrant.';
+      }
       this.barkOnce('enter_priory', 'Catalana: Real stone. False altar. Watch the loft.');
-      this.toast('Entering Corbières priory road.');
+      this.maybeJournalDoneToast();
       this.persist();
       this.closeDialogue();
       void this.enterHub(CORBIERES_START.x, CORBIERES_START.z);
@@ -1306,8 +1389,15 @@ export class Game {
     if (effect === 'enter_act1_road') {
       this.mapZone = 'act1_road';
       this.flags.map_zone = 'act1_road';
-      this.storyBeat = 'Back on the Fontfroide–Narbonne road.';
-      this.toast('Returning to Act I road.');
+      this.storyBeat = this.flags.priory_path
+        ? 'Downhill toward ferry-mud. Priory’s behind — keep the bag dry.'
+        : 'Back on the Fontfroide–Narbonne road.';
+      if (this.flags.priory_path) {
+        this.barkOnce('return_aude', 'Guillem: Priory’s behind us. Keep the bag dry.');
+      } else {
+        this.toast('Returning to Act I road.');
+      }
+      this.maybeJournalDoneToast();
       this.persist();
       this.closeDialogue();
       void this.enterHub(-1.2, -4.2);
@@ -1333,7 +1423,13 @@ export class Game {
     if (!obj) return;
     const carrier = this.flags.chest_carrier || '—';
     const trust = this.flags.pilgrim_trust;
-    obj.innerHTML = `${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust}</span>`;
+    const zoneLabel =
+      this.mapZone === 'corbieres'
+        ? 'Corbières priory'
+        : this.mapZone === 'act3_close'
+          ? 'Act III close'
+          : 'Fontfroide–Narbonne road';
+    obj.innerHTML = `${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust} · ${zoneLabel}</span>`;
   }
 
   private startCombat(
@@ -1386,6 +1482,7 @@ export class Game {
         call_out: 'Call out',
         bolt: 'Bolt',
         brace: 'Brace',
+        brace_wagon: 'Brace wagon',
         stabilize: 'Stabilize',
         tend: 'Tend',
         wait: 'Wait',

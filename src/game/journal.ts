@@ -133,23 +133,53 @@ export function buildJournal(flags: FlagMap, _party?: PartyMember[]): JournalEnt
     entries.push({ id: 'q_letter', title: 'Letter for Narbonne', body, status, sort: 70 });
   }
 
-  // q_corbieres — Act II
+  // q_corbieres — Act II (+ 08 zone enter bodies)
   if (act1Complete || !!flags.act1_complete) {
-    const inHills = String(flags.map_zone) === 'corbieres';
+    const zone = String(flags.map_zone || '');
+    const inHills = zone === 'corbieres';
     const path = String(flags.priory_path || '');
     const deal = String(flags.captain_deal || 'none');
+    const act2Started = !!flags.act2_beat || inHills || zone === 'act3_close';
+    let title = 'Corbières priory';
     let body = inHills
-      ? 'Hill road to the ruined priory. Berna holds the yard — steal, talk, or hold the nave door.'
+      ? 'Priory stones ahead. Berna’s box and Hugues’s warrant wait in the same mud.'
       : 'Act I closed. Take the hill road from Narbonne toward the ruined priory in the Corbières.';
+    if (narbonne === 'refused_forger' && act2Started) {
+      title = 'Ugly exit';
+      body = 'Gate kept us out. Priory is still the only road that matters.';
+    } else if (narbonne === 'deferred_gate' && act2Started) {
+      title = 'Past the gate';
+      body = 'We rode past Narbonne. Legate may already be north — Corbières anyway.';
+    } else if (act2Started && !path) {
+      title = 'Hill road';
+      body = 'Priory stones ahead. Berna’s box and Hugues’s warrant wait in the same mud.';
+    }
     let status: JournalEntry['status'] = 'active';
     if (path) {
+      title = 'Corbières priory';
       body = `Priory path: ${path.replace('_', ' ')}. Hugues wants the ruin as a warrant.`;
     }
     if (deal !== 'none') {
       status = 'done';
+      title = 'Corbières priory';
       body = `Hugues deal: ${deal.split('_').join(' ')}. Serena may still name the hill lord.`;
     }
-    entries.push({ id: 'q_corbieres', title: 'Corbières priory', body, status, sort: 80 });
+    entries.push({ id: 'q_corbieres', title, body, status, sort: 80 });
+  }
+
+  // Return downhill (08) — visible when Act II touched and player is back on Act I road
+  if (
+    !!flags.act2_beat &&
+    String(flags.map_zone || '') === 'act1_road' &&
+    !flags.act3_done
+  ) {
+    entries.push({
+      id: 'q_back_aude',
+      title: 'Back to the Aude',
+      body: 'Downhill toward ferry-mud and whatever Narbonne still wants from us.',
+      status: 'active',
+      sort: 85,
+    });
   }
 
   if (String(flags.captain_deal || 'none') !== 'none' || !!flags.talked_serena) {
@@ -168,12 +198,17 @@ export function buildJournal(flags: FlagMap, _party?: PartyMember[]): JournalEnt
     });
   }
 
-  // Act III journal map (07-act-iii-thick)
-  if (!!flags.talked_serena || !!flags.act3_beat || !!flags.act3_done) {
+  // Act III journal map (07 + 08 zone enter)
+  if (!!flags.talked_serena || !!flags.act3_beat || !!flags.act3_done || String(flags.map_zone) === 'act3_close') {
+    const named = !!flags.lord_name;
     entries.push({
       id: 'act3_open',
-      title: 'Act III — names and wood',
-      body: 'Willows, optional leper roof, hill lord or empty house, then the splinter.',
+      title: named ? 'Rope on paper' : flags.talked_serena ? 'Cold ash' : 'Names and wood',
+      body: named
+        ? 'Raimon of Quéribus. Hide him, hang him, or walk past.'
+        : flags.talked_serena && !named
+          ? 'No name. Hill house may already be empty.'
+          : 'Act III. Lord or empty house, then the splinter’s end.',
       status: flags.act3_done ? 'done' : 'active',
       sort: 100,
     });

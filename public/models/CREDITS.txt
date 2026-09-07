@@ -3,5 +3,7 @@ Characters: clerk GLB (tools/make_clerk.py); sergeant/convers/guide/surgeon
   (tools/make_sergeant.py, make_convers.py, make_guide.py, make_surgeon.py + character_common.py);
   odon/marta/etc (tools/make_characters.py);
   badge_bandit / badge_bandit_b (tools/make_badge_bandit.py) — original dirt-and-mail Broken Seal art.
-Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, dirt-and-mail.
+Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, dirt-and-mail;
+  parish_porch (tools/make_parish_porch.py) — Romanesque limestone porch + shut oak door;
+  burial_gate (tools/make_burial_gate.py) — locked iron/wood churchyard gate, chain + padlock.
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.

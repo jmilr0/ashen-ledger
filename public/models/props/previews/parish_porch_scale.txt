@@ -1,0 +1,10 @@
+height_m=3.2292
+width_x_m=3.4476
+depth_y_m=1.8762
+tris=1680
+objects=Porch_Door,Porch_Steps,Porch_Stone
+origin=ground_center_porch_footprint
+collision=tight_to_mesh
+interact_latch_note=~1.2x generous RMB latch only (not collider shell)
+door_w_m~=1.12 door_h_m~=2.10
+style=romanesque_rural_occitan_1208

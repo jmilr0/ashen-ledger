@@ -36,6 +36,9 @@ const PATH = {
   badgeBandit: './models/characters/badge_bandit.glb',
   badgeBanditB: './models/characters/badge_bandit_b.glb',
   ferryRope: './models/props/ferry_rope.glb',
+  // Optional Act I parish art — load when present; placeholders otherwise
+  parishPorch: './models/props/parish_porch.glb',
+  burialGate: './models/props/burial_gate.glb',
   // Optional party / priory art — load when present; placeholders otherwise
   sergeant: './models/characters/sergeant.glb',
   convers: './models/characters/convers.glb',
@@ -668,6 +671,9 @@ export class World {
       );
     }
 
+    // Parish porch + burial gate (Art drops) — after collider reset
+    await this.tryHookParishProps();
+
     this.removeNamed('temp-building');
     this.removeNamed('temp-arch');
 
@@ -865,6 +871,37 @@ export class World {
     this.scene.add(this.playerMesh);
   }
 
+
+  /** Non-blocking: parish porch / burial gate props when Art ships them. */
+  private async tryHookParishProps(): Promise<void> {
+    if (this.zone !== 'act1_road') return;
+    const parish = this.activeNpcs.find((n) => n.id === 'parish');
+    const px = (parish?.x ?? 0.8) * TILE;
+    const pz = (parish?.z ?? -2.6) * TILE;
+
+    const porch = await loadModel(PATH.parishPorch);
+    if (porch) {
+      fitToHeight(porch, 2.35);
+      tintMeshes(porch, 0x6a6860, 0.12);
+      // Sit slightly behind/ beside the priest interact point
+      porch.position.set(px - 0.15, 0, pz - 0.85);
+      porch.rotation.y = Math.PI * 0.08;
+      porch.name = 'parish-porch-art';
+      this.scene.add(porch);
+      this.addBoxCollider(px - 0.15, pz - 0.85, 1.1, 0.7);
+    }
+
+    const gate = await loadModel(PATH.burialGate);
+    if (gate) {
+      fitToHeight(gate, 1.85);
+      tintMeshes(gate, 0x4a4840, 0.15);
+      gate.position.set(px + 1.6, 0, pz - 0.4);
+      gate.rotation.y = -Math.PI * 0.35;
+      gate.name = 'burial-gate-art';
+      this.scene.add(gate);
+      this.addBoxCollider(px + 1.6, pz - 0.4, 0.7, 0.35);
+    }
+  }
 
   /** Non-blocking: if party/priory GLBs exist under public/models, upgrade meshes. */
   private async tryHookPartyMeshes(): Promise<void> {

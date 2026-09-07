@@ -1,4 +1,4 @@
-export type Screen = 'title' | 'hub' | 'dialogue' | 'combat' | 'party' | 'inventory' | 'journal';
+export type Screen = 'title' | 'hub' | 'dialogue' | 'combat' | 'party' | 'inventory' | 'journal' | 'help' | 'epilogue';
 
 export type JobId = 'clerk' | 'sergeant' | 'convers' | 'guide' | 'surgeon';
 

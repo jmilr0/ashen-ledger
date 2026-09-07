@@ -9,6 +9,7 @@ import {
 } from './data';
 import { CombatSession, type CombatActionId } from './combat';
 import { buildJournal } from './journal';
+import { buildEpilogueCards } from './epilogue';
 import { hasSave, loadGame, saveGame } from './save';
 import type {
   CombatEncounter,
@@ -78,9 +79,19 @@ export class Game {
         if (this.screen === 'hub') this.world?.orbit(0.18);
       }
       if (e.key === 'Escape') {
-        if (this.screen === 'party' || this.screen === 'inventory' || this.screen === 'journal') {
+        if (
+          this.screen === 'party' ||
+          this.screen === 'inventory' ||
+          this.screen === 'journal' ||
+          this.screen === 'help' ||
+          this.screen === 'epilogue'
+        ) {
           this.closeOverlay();
         }
+      }
+      if (e.key === 'h' || e.key === 'H' || e.key === '?') {
+        if (this.screen === 'help') this.closeOverlay();
+        else if (this.screen === 'hub') this.showHelp();
       }
       if ((e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -139,7 +150,7 @@ export class Game {
         <button class="btn primary" id="btn-new">New Journey</button>
         <button class="btn" id="btn-continue" ${hasSave() ? '' : 'disabled'}>Continue</button>
       </div>
-      <p class="hint">LMB move · RMB talk / drag orbit · Q/R rotate · E/F interact · I inv · C party · J journal · 1–5/Tab switch · Ctrl+S save</p>
+      <p class="hint">LMB move · RMB talk / drag orbit · Q/R rotate · E/F interact · I inv · C party · J journal · H/? help · 1–5/Tab switch · Ctrl+S save</p>
     `;
     this.ui.appendChild(el);
     el.querySelector('#btn-new')!.addEventListener('click', () => this.newGame());
@@ -221,7 +232,7 @@ export class Game {
       const dy = ev.clientY - this.lastPointerY;
       this.lastPointerX = ev.clientX;
       this.lastPointerY = ev.clientY;
-      this.world.orbit(-dx * 0.007, dy * 0.005);
+      this.world.orbit(-dx * 0.0084, dy * 0.006); // ~1.2× prior RMB latches
     });
     const endOrbit = (ev: PointerEvent) => {
       if (ev.button === 2 || this.orbitDragging) {
@@ -426,7 +437,7 @@ export class Game {
       </div>
       <div class="objective panel">${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust} · ${zoneLabel}</span></div>
       <div class="party-strip" id="party-strip"></div>
-      <div class="minimap-hint panel">LMB walk · RMB NPC / orbit · Q/R · E/F · 1–5/Tab switch · J journal</div>
+      <div class="minimap-hint panel">LMB walk · RMB NPC / orbit · Q/R · E/F · 1–5/Tab · J journal · H help</div>
     `;
     this.ui.appendChild(hud);
     hud.querySelector('#hud-party')!.addEventListener('click', () => this.showParty());
@@ -1458,7 +1469,9 @@ export class Game {
       this.toast('Campaign frame closed — war continues.');
       this.refreshObjective();
       this.persist();
-      return 'close';
+      this.closeDialogue();
+      this.showEpilogue();
+      return 'stay';
     }
 
     if (effect === 'enter_corbieres') {
@@ -1846,8 +1859,67 @@ export class Game {
     document.getElementById('party-panel')?.remove();
     document.getElementById('inventory-panel')?.remove();
     document.getElementById('journal-panel')?.remove();
+    document.getElementById('help-panel')?.remove();
+    document.getElementById('epilogue-panel')?.remove();
     this.screen = 'hub';
     this.refreshPartyStrip();
+  }
+
+  /** Controls help — content/narrative/12-controls-help.md + Eng key list. */
+  private showHelp(): void {
+    this.screen = 'help';
+    document.getElementById('help-panel')?.remove();
+    const panel = document.createElement('div');
+    panel.id = 'help-panel';
+    panel.className = 'panel';
+    panel.innerHTML = `<h2>The Broken Seal — five jobs. No miracles.</h2>
+      <ul class="help-list">
+        <li><strong>1–5 / Tab</strong> — who’s in front. Bag pip isn’t the face.</li>
+        <li><strong>LMB</strong> move · <strong>RMB</strong> talk / orbit · <strong>Q/R</strong> turn the view</li>
+        <li><strong>E / F</strong> — interact with what’s near</li>
+        <li><strong>J</strong> journal (flags don’t lie politely) · <strong>I</strong> inventory · <strong>C / P</strong> party</li>
+        <li><strong>Space</strong> — LIVE / PAUSED. Queue orders while paused; Hold, then Cut.</li>
+        <li><strong>Rest</strong> — Elias and linen, once per beat. Not a spell. (party panel)</li>
+        <li><strong>Ctrl+S</strong> — save the road · <strong>H / ?</strong> — this help</li>
+      </ul>
+      <p class="help-tips">Seals, pilgrims, wet boots. Return closes the panel.</p>
+      <button class="btn" id="close-help">Close</button>`;
+    this.ui.appendChild(panel);
+    panel.querySelector('#close-help')!.addEventListener('click', () => this.closeOverlay());
+  }
+
+  /** Act III ending overlay — content/narrative/11-epilogue.md */
+  private showEpilogue(): void {
+    this.screen = 'epilogue';
+    document.getElementById('epilogue-panel')?.remove();
+    const panel = document.createElement('div');
+    panel.id = 'epilogue-panel';
+    panel.className = 'panel';
+    const cards = buildEpilogueCards(this.flags, this.party);
+    const body = cards
+      .map(
+        (c) => `<div class="epilogue-card">
+          <h3>${c.title}</h3>
+          <p>${c.body.replace(/\n\n/g, '</p><p>')}</p>
+        </div>`
+      )
+      .join('');
+    panel.innerHTML = `<h2>Frame closed — war continues</h2>
+      <p class="stats" style="margin-top:0.35rem;opacity:0.75">Dirt and consequence. You do not win the war.</p>
+      <div class="epilogue-scroll">${body}</div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+        <button class="btn primary" id="epilogue-continue">Continue exploring</button>
+        <button class="btn" id="epilogue-new">New game</button>
+      </div>`;
+    this.ui.appendChild(panel);
+    panel.querySelector('#epilogue-continue')!.addEventListener('click', () => {
+      this.closeOverlay();
+      this.refreshObjective();
+    });
+    panel.querySelector('#epilogue-new')!.addEventListener('click', () => {
+      document.getElementById('epilogue-panel')?.remove();
+      this.newGame();
+    });
   }
 
   private loop(t: number): void {

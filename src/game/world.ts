@@ -54,6 +54,9 @@ const PATH = {
   collapsingLoft: './models/props/collapsing_loft.glb',
   sheepGate: './models/props/sheep_gate.glb',
   huguesPavilion: './models/props/hugues_pavilion.glb',
+  mileMarker: './models/props/mile_marker.glb',
+  moldCavity: './models/props/mold_cavity.glb',
+  narbonneAgent: './models/characters/narbonne_agent.glb',
   bernaNpc: './models/characters/brin.glb',
   huguesNpc: './models/characters/rowan.glb',
   serenaNpc: './models/characters/mirelle.glb',
@@ -699,6 +702,10 @@ export class World {
     if (ferryArt) {
       await this.upgradeNpc('ferry', ferryArt, 1.4, 0x4a4030, 0.15);
     }
+    const narbonneArt = await loadModel(PATH.narbonneAgent);
+    if (narbonneArt) {
+      await this.upgradeNpc('narbonne', narbonneArt, 1.72, 0x3a4858, 0.12);
+    }
 
     this.colliders = [];
     this.addAABB(-4.2, -3.0, -GRID * TILE * 0.45, -0.9);
@@ -940,6 +947,34 @@ export class World {
       gate.name = 'burial-gate-art';
       this.scene.add(gate);
       this.addBoxCollider(px + 1.6, pz - 0.4, 0.7, 0.35);
+    }
+
+    // Mile marker — Fontfroide–Narbonne road set dressing (near ambush scrub)
+    const bandits = this.activeNpcs.find((n) => n.id === 'bandits');
+    const bx = (bandits?.x ?? 3.2) * TILE;
+    const bz = (bandits?.z ?? -3.8) * TILE;
+    const mile = await loadModel(PATH.mileMarker);
+    if (mile) {
+      fitToHeight(mile, 1.2);
+      tintMeshes(mile, 0x6a6860, 0.12);
+      mile.position.set(bx - 1.1, 0, bz + 0.8);
+      mile.name = 'mile-marker-art';
+      this.scene.add(mile);
+      this.addBoxCollider(bx - 1.1, bz + 0.8, 0.35, 0.35);
+    }
+
+    // Goldsmith mold cavity — beside viscount’s rider / mold beat
+    const moldNpc = this.activeNpcs.find((n) => n.id === 'mold');
+    const mx = (moldNpc?.x ?? -2.0) * TILE;
+    const mz = (moldNpc?.z ?? -3.5) * TILE;
+    const cavity = await loadModel(PATH.moldCavity);
+    if (cavity) {
+      fitToHeight(cavity, 0.85);
+      tintMeshes(cavity, 0x4a4030, 0.12);
+      cavity.position.set(mx + 0.55, 0, mz - 0.35);
+      cavity.name = 'mold-cavity-art';
+      this.scene.add(cavity);
+      this.addBoxCollider(mx + 0.55, mz - 0.35, 0.55, 0.45);
     }
   }
 
@@ -1196,16 +1231,34 @@ export class World {
       if (m.visible) meshes.push(m);
     }
     const hits = this.raycaster.intersectObjects(meshes, true);
-    if (!hits.length) return null;
-    let obj: THREE.Object3D | null = hits[0].object;
-    while (obj) {
-      if (obj.userData?.npcId) {
-        const id = obj.userData.npcId as string;
-        return this.activeNpcs.find((n) => n.id === id) ?? null;
+    if (hits.length) {
+      let obj: THREE.Object3D | null = hits[0].object;
+      while (obj) {
+        if (obj.userData?.npcId) {
+          const id = obj.userData.npcId as string;
+          return this.activeNpcs.find((n) => n.id === id) ?? null;
+        }
+        obj = obj.parent;
       }
-      obj = obj.parent;
     }
-    return null;
+    // ~1.2× RMB latch: if mesh miss, latch nearest NPC to ground under cursor
+    const pt = this.screenToGround(clientX, clientY);
+    if (!pt) return null;
+    const maxD = 1.6 * 1.2;
+    let best: NpcDef | null = null;
+    let bestD = maxD;
+    for (const n of this.activeNpcs) {
+      const m = this.npcMeshes.get(n.id);
+      if (m && !m.visible) continue;
+      const dx = n.x * TILE - pt.x;
+      const dz = n.z * TILE - pt.z;
+      const d = Math.hypot(dx, dz);
+      if (d < bestD) {
+        bestD = d;
+        best = n;
+      }
+    }
+    return best;
   }
 
   moveToWorld(point: THREE.Vector3): void {

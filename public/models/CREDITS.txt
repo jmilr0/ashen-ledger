@@ -2,7 +2,8 @@
 Characters: clerk GLB (tools/make_clerk.py); sergeant/convers/guide/surgeon
   (tools/make_sergeant.py, make_convers.py, make_guide.py, make_surgeon.py + character_common.py);
   odon/marta/etc (tools/make_characters.py);
-  badge_bandit / badge_bandit_b (tools/make_badge_bandit.py) — original dirt-and-mail Broken Seal art.
+  badge_bandit / badge_bandit_b (tools/make_badge_bandit.py) — original dirt-and-mail Broken Seal art;
+  narbonne_agent (tools/make_narbonne_agent.py) — hooded courier, wax+mud cloak, sealed pouch.
 Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, dirt-and-mail;
   parish_porch (tools/make_parish_porch.py) — Romanesque limestone porch + shut oak door;
   burial_gate (tools/make_burial_gate.py) — locked iron/wood churchyard gate, chain + padlock;
@@ -10,5 +11,7 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   yard_rope (tools/make_yard_rope.py) — courtyard post/ring + cuttable brace rope (hold_door);
   collapsing_loft (tools/make_collapsing_loft.py) — broken loft beams + debris (Guide loft set dressing);
   sheep_gate (tools/make_sheep_gate.py) — wooden stock/hurdle exit gate in stone posts (hold_door escape);
-  hugues_pavilion (tools/make_hugues_pavilion.py) — northern captain field tent, guy ropes, dull banner.
+  hugues_pavilion (tools/make_hugues_pavilion.py) — northern captain field tent, guy ropes, dull banner;
+  mile_marker (tools/make_mile_marker.py) — worn limestone league stone, Fontfroide–Narbonne road;
+  mold_cavity (tools/make_mold_cavity.py) — lifted floorboards + lead seal die hidey-hole (goldsmith).
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.

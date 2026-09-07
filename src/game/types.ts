@@ -1,4 +1,4 @@
-export type Screen = 'title' | 'hub' | 'dialogue' | 'combat' | 'party' | 'inventory';
+export type Screen = 'title' | 'hub' | 'dialogue' | 'combat' | 'party' | 'inventory' | 'journal';
 
 export type JobId = 'clerk' | 'sergeant' | 'convers' | 'guide' | 'surgeon';
 
@@ -7,6 +7,11 @@ export type ChestCarrier = 'clerk' | 'sergeant' | 'convers';
 export type MoldFate = '' | 'given_viscount' | 'drowned' | 'kept';
 
 export type CombatEncounter = 'ambush' | 'ferry';
+
+export type MapZone = 'act1_road' | 'corbieres';
+
+/** Portrait / select order: 1=guide … 5=surgeon */
+export const SELECT_ORDER: JobId[] = ['guide', 'sergeant', 'convers', 'clerk', 'surgeon'];
 
 export interface Stats {
   hp: number;
@@ -47,6 +52,16 @@ export interface DialogueNode {
   choices?: DialogueChoice[];
 }
 
+export type JournalStatus = 'active' | 'done' | 'failed' | 'locked';
+
+export interface JournalEntry {
+  id: string;
+  title: string;
+  body: string;
+  status: JournalStatus;
+  sort: number;
+}
+
 export interface SaveData {
   version: 1;
   party: PartyMember[];
@@ -55,6 +70,8 @@ export interface SaveData {
   playerX: number;
   playerZ: number;
   storyBeat: string;
+  controlledId?: JobId;
+  mapZone?: MapZone;
 }
 
 export type FormationSlot = 'frontL' | 'frontR' | 'rearL' | 'rearR' | 'loft';
@@ -75,4 +92,19 @@ export interface Combatant {
   downed?: boolean;
   wavering?: boolean;
   badgesExposed?: boolean;
+  /** RTwP: queued job action while paused / awaiting recover. */
+  order?: string | null;
+  /** RTwP: seconds until next action can fire. */
+  recoverUntil?: number;
+}
+
+export interface NpcDef {
+  id: string;
+  name: string;
+  color: number;
+  x: number;
+  z: number;
+  dialogueId: string;
+  hint: string;
+  combat?: boolean;
 }

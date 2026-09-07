@@ -40,7 +40,6 @@ You play **Rowan Vale**, debt-marked investigator. Speak with **Dockhand Brin**,
 | **Right-drag** (empty) | Orbit camera around player |
 | **Q** / **R** | Rotate camera left / right |
 | **E** / **F** | Interact with nearby NPC (backup) |
-| **E** | Interact with nearby NPC / start combat at wraith |
 | **I** | Inventory |
 | **C** / **P** | Party |
 | **Ctrl+S** | Save |

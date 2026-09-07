@@ -19,5 +19,6 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   leper_rest (tools/make_leper_rest.py) — Act III leper-house Rest cot, linen, basin, willow sprig.
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
 
-Art path hooks (optional drops): mile_marker.glb, mold_cavity.glb under props/;
-narbonne_agent.glb (or narbonne_courier.glb / hooded_courier.glb) under characters/.
+Art path hooks (optional drops): mile_marker.glb, mold_cavity.glb, cloister_arcade.glb,
+cloister_well.glb, leper_rest.glb under props/;
+narbonne_agent.glb (or narbonne_courier.glb / hooded_courier.glb), badge_bandit*.glb under characters/.

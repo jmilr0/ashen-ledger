@@ -56,6 +56,9 @@ const PATH = {
   huguesPavilion: './models/props/hugues_pavilion.glb',
   mileMarker: './models/props/mile_marker.glb',
   moldCavity: './models/props/mold_cavity.glb',
+  cloisterArcade: './models/props/cloister_arcade.glb',
+  cloisterWell: './models/props/cloister_well.glb',
+  leperRest: './models/props/leper_rest.glb',
   narbonneAgent: './models/characters/narbonne_agent.glb',
   // Upcoming Art aliases (non-blocking) — prefer agent, then courier names
   narbonneCourier: './models/characters/narbonne_courier.glb',
@@ -792,9 +795,18 @@ export class World {
     const banditB = await loadModel(PATH.badgeBanditB);
     if (banditA) {
       await this.upgradeNpc('bandits', banditA, 1.7, 0x3a3028, 0.1);
-      // optional second figure already baked or skip
+      // Second ambush figure when Art ships badge_bandit_b
       if (banditB) {
-        /* second mesh reserved — Art may dual-body later */
+        const side = banditB;
+        fitToHeight(side, 1.68);
+        tintMeshes(side, 0x3a3028, 0.1);
+        const bandits = this.activeNpcs.find((n) => n.id === 'bandits');
+        const bx = (bandits?.x ?? 3.2) * TILE;
+        const bz = (bandits?.z ?? -3.8) * TILE;
+        side.position.set(bx + 0.55, 0, bz - 0.45);
+        side.rotation.y = Math.PI * 0.35;
+        side.name = 'badge-bandit-b-art';
+        this.scene.add(side);
       }
     }
     const ferryArt = await loadModel(PATH.ferryRope);
@@ -1182,6 +1194,31 @@ export class World {
       this.scene.add(cavity);
       this.addBoxCollider(mx + 0.55, mz - 0.35, 0.55, 0.45);
     }
+
+    // Fontfroide cloister bay + yard well (Art drops) — west abbey near cellarer
+    const cellarer = this.activeNpcs.find((n) => n.id === 'cellarer');
+    const cx = (cellarer?.x ?? -3.2) * TILE;
+    const cz = (cellarer?.z ?? -1.2) * TILE;
+    const arcade = await loadModel(PATH.cloisterArcade);
+    if (arcade) {
+      fitToHeight(arcade, 3.2);
+      tintMeshes(arcade, 0x6a6860, 0.1);
+      // Backdrop along west abbey wall; keep ditch gap clear
+      arcade.position.set(cx - 0.95, 0, cz - 1.35);
+      arcade.rotation.y = Math.PI * 0.08;
+      arcade.name = 'cloister-arcade-art';
+      this.scene.add(arcade);
+      this.addBoxCollider(cx - 0.95, cz - 1.35, 1.35, 0.85);
+    }
+    const well = await loadModel(PATH.cloisterWell);
+    if (well) {
+      fitToHeight(well, 1.5);
+      tintMeshes(well, 0x5a5848, 0.12);
+      well.position.set(cx + 1.05, 0, cz + 0.95);
+      well.name = 'cloister-well-art';
+      this.scene.add(well);
+      this.addBoxCollider(cx + 1.05, cz + 0.95, 0.7, 0.7);
+    }
   }
 
   /** Non-blocking: if party/priory GLBs exist under public/models, upgrade meshes. */
@@ -1301,6 +1338,16 @@ export class World {
         altar.position.set(ax, 0, az);
         altar.name = 'false-altar-art';
         this.scene.add(altar);
+      }
+
+      // Leper-house Rest cot — upgrades interact mesh; pick latch already ~1.2×
+      const rest = await loadModel(PATH.leperRest);
+      if (rest) {
+        await this.upgradeNpc('leper', rest, 0.95, 0x5a5848, 0.1);
+        const leper = this.activeNpcs.find((n) => n.id === 'leper');
+        const lx = (leper?.x ?? -2.0) * TILE;
+        const lz = (leper?.z ?? -1.5) * TILE;
+        this.addBoxCollider(lx, lz, 0.85, 0.65);
       }
     }
   }
@@ -1476,7 +1523,7 @@ export class World {
     this.marker.visible = true;
   }
 
-  nearestNpc(maxDist = 1.6): NpcDef | null {
+  nearestNpc(maxDist = 1.6 * 1.2): NpcDef | null {
     let best: NpcDef | null = null;
     let bestD = maxDist;
     const px = this.playerX * TILE;

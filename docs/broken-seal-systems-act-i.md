@@ -102,3 +102,17 @@ Collision / click targets (orbit cam):
 - Breaking the true seal is possible and permanently worsens a later beat.
 - Pilgrim trust can be lost and the ferry feels it.
 - Surgeon Stabilize is the only “heal,” and it costs a turn / between-scene time (always available so the surgeon turn cannot softlock).
+
+---
+
+## Act II–III combat (addendum)
+
+Same job verbs as Act I. New encounters:
+
+| Id | Pattern | Win |
+|---|---|---|
+| `hold_door` | Ferry-like: Sergeant **Hold** on nave door; Convers sheep-gate / Kick latch; Guide Bolt if loft | Hold sustained N pulses (RTwP: ~6–8s live with Hold up) **or** rounds mode: Hold on Sergeant’s action for 2 full enemy phases while Convers opens gate → then `priory_yard` or flee |
+| `priory_yard` | 2–3 foes; talk-fail / steal-caught | Rout (kill/waver) **or** transition from successful hold_door |
+| `priory_loft` | `smoke_loft`; optional Guide loft; 1 crossbow | Survive timer / cut loft rope barrier (Convers); Bolt pressure from loft |
+
+Flags: `priory_path` steal|talk|hold_door; carry Act I mold/seal/trust into Hugues / Serena / Act III. No new magic.

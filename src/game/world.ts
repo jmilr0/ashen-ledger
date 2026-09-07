@@ -17,8 +17,9 @@ const ORBIT_PITCH_MAX = 1.25;
 /** Prefer muted medieval props; avoid ghost/crypt fantasy kits. */
 const PATH = {
   player: './models/characters/clerk.glb',
-  cellarer: './models/characters/odon.glb',
-  mairia: './models/characters/marta.glb',
+  cellarer: './models/characters/guiraut.glb',
+  mairia: './models/characters/mairia.glb',
+  ramon: './models/characters/ramon.glb',
   wallDoor: './models/fantasy/wall-door.glb',
   wallWindow: './models/fantasy/wall-window-shutters.glb',
   wallBlock: './models/fantasy/wall-block.glb',
@@ -797,6 +798,7 @@ export class World {
       PATH.player,
       PATH.cellarer,
       PATH.mairia,
+      PATH.ramon,
       PATH.wallDoor,
       PATH.wallWindow,
       PATH.wallBlock,
@@ -824,6 +826,7 @@ export class World {
     await this.upgradeCharacter('player', take('player'), 1.75, 0x6a5a48);
     await this.upgradeNpc('cellarer', take('cellarer'), 1.5, 0x6a6a58);
     await this.upgradeNpc('mairia', take('mairia'), 1.5, 0x6a5038);
+    await this.upgradeNpc('parish', take('ramon'), 1.72, 0x5a5848);
     // Art hooks — use GLBs when present; keep placeholders if missing
     const banditA = await loadModel(PATH.badgeBandit);
     const banditB = await loadModel(PATH.badgeBanditB);

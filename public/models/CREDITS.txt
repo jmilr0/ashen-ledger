@@ -3,7 +3,8 @@ Characters: clerk GLB (tools/make_clerk.py); sergeant/convers/guide/surgeon
   (tools/make_sergeant.py, make_convers.py, make_guide.py, make_surgeon.py + character_common.py);
   odon/marta/etc (tools/make_characters.py);
   badge_bandit / badge_bandit_b (tools/make_badge_bandit.py) — original dirt-and-mail Broken Seal art;
-  narbonne_agent (tools/make_narbonne_agent.py) — hooded courier, wax+mud cloak, sealed pouch.
+  narbonne_agent (tools/make_narbonne_agent.py) — hooded courier, wax+mud cloak, sealed pouch;
+  named NPCs berna/hugues/serena/guiraut/mairia/ramon (tools/make_{name}.py + character_common.py).
 Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, dirt-and-mail;
   parish_porch (tools/make_parish_porch.py) — Romanesque limestone porch + shut oak door;
   burial_gate (tools/make_burial_gate.py) — locked iron/wood churchyard gate, chain + padlock;
@@ -22,13 +23,23 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   mud_rut_patch (tools/make_mud_rut_patch.py) — flat dual cart-rut mud decal;
   pilgrim_bundle (tools/make_pilgrim_bundle.py) — packs, gourd, blanket, leaning staff;
   wayside_cross (tools/make_wayside_cross.py) — weathered oak wayside cross, no glow;
-  ferry_boat (tools/make_ferry_boat.py) — flat scow ferry boat (pairs with ferry_rope).
+  ferry_boat (tools/make_ferry_boat.py) — flat scow ferry boat (pairs with ferry_rope);
+  fontfroide_dormer (tools/make_fontfroide_dormer.py) — Cistercian dormitory bay shell, limestone + tile;
+  parish_nave_shell (tools/make_parish_nave_shell.py) — rural parish nave exterior (pairs with parish_porch);
+  priory_ruin_wall (tools/make_priory_ruin_wall.py) — Corbières ruined priory wall section + rubble;
+  priory_nave_shell (tools/make_priory_nave_shell.py) — ruined nave shell for hold_door (damaged roof);
+  road_house_shell (tools/make_road_house_shell.py) — mud-road limestone/plaster village house + thatch;
+  goldsmith_shop_shell (tools/make_goldsmith_shop_shell.py) — boarded workshop/house + chimney (mold beat).
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
 
-INTERIM (not final Art) — Berna/Hugues/Serena NPC meshes:
-  Prefer characters/berna|hugues|serena.glb when Art ships them;
-  else brin/rowan/mirelle stand-ins; else reuse guide/sergeant/convers party meshes
-  with different scale/tint. Do not treat remaps as hero character art.
+Named NPC hero meshes (shipped; replace interim remaps):
+  berna (make_berna.py) — Corbières yard contact, wool/leather host;
+  hugues (make_hugues.py) — northern captain, mail/surcoat, dull iron;
+  serena (make_serena.py) — Na Serena, hooded noble/agent, wax-and-mud;
+  guiraut (make_guiraut.py) — Brother Guiraut, Fontfroide cellarer, Cistercian habit+keys;
+  mairia (make_mairia.py) — Mairia of Quillan, pilgrim cloak/staff/satchel/mud;
+  ramon (make_ramon.py) — Father Ramon, parish cassock/stole/breviary/staff.
+  Capsule width ≤0.58 m (0.6 m diameter). Dirt-and-mail Occitania 1208–10; no glow.
 
 Art path hooks (optional drops, non-blocking):
   props/: mile_marker, mold_cavity, cloister_arcade, cloister_well, leper_rest,
@@ -36,6 +47,6 @@ Art path hooks (optional drops, non-blocking):
   building shells (exact): fontfroide_dormer, parish_nave_shell, priory_ruin_wall,
     priory_nave_shell, road_house_shell, goldsmith_shop_shell — replace Kenney/box when present;
   characters/: narbonne_agent (or narbonne_courier / hooded_courier), badge_bandit*.glb,
-    berna/hugues/serena (prefer Art; else brin/rowan/mirelle interim remaps).
+    berna/hugues/serena/guiraut/mairia/ramon (named NPCs shipped).
   GD: cart/fence colliders off walk lane; mud_rut_patch + pilgrim_bundle visual-only;
     shell doorways ≥1.2 m clear; wall colliders tight; NPC capsules ~0.6 m.

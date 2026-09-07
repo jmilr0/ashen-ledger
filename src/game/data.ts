@@ -101,6 +101,22 @@ export const DEFAULT_FLAGS: Record<string, boolean | string | number> = {
   act1_complete: false,
   map_zone: 'act1_road',
   combat_mode: 'rtwp',
+  act2_beat: '',
+  priory_path: '',
+  splinter_status: '',
+  captain_deal: 'none',
+  smoke_loft: false,
+  talked_berna: false,
+  talked_hugues: false,
+  talked_serena: false,
+  lord_name: '',
+  lord_name_known: false,
+  act3_beat: '',
+  lord_fate: '',
+  splinter_end: '',
+  act3_done: false,
+  hold_door_done: false,
+  priory_fight_done: false,
 };
 
 export const DIALOGUES: Record<string, DialogueNode[]> = {
@@ -384,9 +400,143 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
   priory_stub: [
     {
       id: 'start',
-      speaker: 'Priory Gate [Narrative]',
-      text: 'Weathered boards. No mass, no legate, no Act II script yet — Engineering scaffold only. Narrative owns the door.',
+      speaker: 'Priory Gate',
+      text: 'Weathered boards on real stone. False altar inside. Berna holds the yard — Hugues’s pickets already count vine rows.',
       choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  berna: [
+    {
+      id: 'start',
+      speaker: 'Berna',
+      text: 'Rome’s wax is soft. This wood walked from a saint’s hand. Kneel and the vines keep their water. Stand aside and the northern host calls you a magazine.',
+      choices: [
+        { text: '[Clerk] That seal’s rim name is dead. Your bull is a month wrong.', next: 'call_seal' },
+        { text: '[Guide] Half these faces are hired. The other half are hungry.', next: 'crowd_read' },
+        { text: 'We only came to see the box.', next: 'see_box' },
+      ],
+    },
+    {
+      id: 'call_seal',
+      speaker: 'Berna',
+      text: 'A clerk’s tongue. The square hears wood, not Latin. Prove it without a riot or step back.',
+      choices: [
+        { text: 'Talk them apart — no blades in the yard.', next: 'fork', effect: 'priory_path_talk' },
+        { text: 'We take the chest when your backs turn.', next: 'fork', effect: 'priory_path_steal' },
+      ],
+    },
+    {
+      id: 'crowd_read',
+      speaker: 'Berna',
+      text: 'Hungry men still kneel. Hungry men also run if the loft catches fire.',
+      choices: [
+        { text: 'Hold the nave door. Get people out the sheep-gate.', next: 'fork', effect: 'priory_path_hold' },
+        { text: 'Talk first. Steel second.', next: 'fork', effect: 'priory_path_talk' },
+      ],
+    },
+    {
+      id: 'see_box',
+      speaker: 'Berna',
+      text: 'Look. Don’t touch. Touching is for the apostles.',
+      choices: [
+        { text: '[Convers] Latch is soft. We can lift it in the smoke.', next: 'fork', effect: 'priory_path_steal' },
+        { text: 'Enough looking.', next: 'fork', effect: 'priory_path_talk' },
+      ],
+    },
+    {
+      id: 'fork',
+      speaker: 'Berna',
+      text: 'Choose, then. The captain’s pickets are already counting vine rows.',
+      choices: [{ text: '(Commit the path)', effect: 'end_priory_fork' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Berna',
+      text: 'Path is set. The loft or the captain next — not both at once if you can help it.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  hugues: [
+    {
+      id: 'start',
+      speaker: 'Captain Hugues',
+      text: 'This ruin is a warrant. Heretics in the nave, vines unpaid, my men fed. Hand me a reason not to burn the sheep-gate behind you.',
+      choices: [
+        { text: '[Clerk] The bull is forged. Hang the goldsmith’s die, not the village.', next: 'forge_proof' },
+        { text: '[Sergeant] You want a clean excuse. A massacre makes a dirty one.', next: 'clean_excuse' },
+        { text: 'Take the stones. Leave the people the path.', effect: 'captain_vines_seized' },
+      ],
+    },
+    {
+      id: 'forge_proof',
+      speaker: 'Captain Hugues',
+      text: 'Show me lead that matches, or a mold, or a name. Paper without teeth is weather.',
+      choices: [
+        { text: 'We kept the mold. Match it.', next: 'mold_show', effect: 'need_mold_kept' },
+        { text: 'Mold’s in the Aude. You’ll have to trust a clerk’s eye.', next: 'no_mold' },
+        { text: 'Viscount has the mold. Ride his leash.', next: 'viscount_leash' },
+      ],
+    },
+    {
+      id: 'mold_show',
+      speaker: 'Captain Hugues',
+      text: '…Die fits the false rim. Fine. I spare the yard. I still take the priory stones for the host.',
+      choices: [{ text: 'Stones, not blood.', effect: 'captain_vines_spared' }],
+    },
+    {
+      id: 'no_mold',
+      speaker: 'Captain Hugues',
+      text: 'Trust is expensive. Coin or a hostage night, or I count vines my way.',
+      choices: [
+        { text: 'Pay him off. Column stays fed.', effect: 'captain_bribed_off' },
+        { text: 'No deal. We hold what we hold.', effect: 'captain_vines_seized' },
+      ],
+    },
+    {
+      id: 'viscount_leash',
+      speaker: 'Captain Hugues',
+      text: 'Then the viscount and I will speak. You bought a soft rider a louder friend.',
+      choices: [{ text: '(Leave him to it)', effect: 'captain_vines_spared' }],
+    },
+    {
+      id: 'clean_excuse',
+      speaker: 'Captain Hugues',
+      text: 'Guillem talks like a man who has starved a castle. Very well — door held, people gone, I claim empty stone.',
+      choices: [{ text: 'Empty stone. We’re done here.', effect: 'captain_vines_spared' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Captain Hugues',
+      text: 'The warrant is settled enough. Serena still knows which lord paid the die.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  serena: [
+    {
+      id: 'start',
+      speaker: 'Na Serena',
+      text: 'My husband sold wine to whoever paid for that lead die. The lord who signed the purse sits warm in a hill house. Name him in Narbonne and he hangs. Stay quiet and he hides you once.',
+      choices: [
+        { text: 'Give the name. Act III will need it.', effect: 'learn_lord_name' },
+        { text: 'Keep it. We may need a roof more than a hanging.', effect: 'lord_name_withheld' },
+      ],
+    },
+    {
+      id: 'after',
+      speaker: 'Na Serena',
+      text: 'I’ve said what I’ll say. The hill house waits or it doesn’t.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  hold_door: [
+    {
+      id: 'start',
+      speaker: 'Nave Door',
+      text: 'Sergeant Holds the nave — Convers opens the sheep-gate. Same muscle as the ferry rope, different wood.',
+      choices: [
+        { text: 'Form up — Hold the door.', effect: 'start_hold_door' },
+        { text: '(Not yet)', effect: 'end' },
+      ],
     },
   ],
   road_back_narbonne: [
@@ -482,12 +632,49 @@ export const NPCS = [
 export const CORBIERES_NPCS = [
   {
     id: 'priory_door',
-    name: 'Priory Gate [Narrative]',
+    name: 'Priory Gate',
     color: 0x5a5848,
-    x: 0.0,
-    z: -3.2,
+    x: -2.2,
+    z: -3.5,
     dialogueId: 'priory_stub',
-    hint: 'Priory door — Narrative stub',
+    hint: 'Priory gate',
+  },
+  {
+    id: 'berna',
+    name: 'Berna',
+    color: 0x6a5038,
+    x: 0.2,
+    z: -2.0,
+    dialogueId: 'berna',
+    hint: 'Yard preacher — hard fork',
+  },
+  {
+    id: 'hold_door',
+    name: 'Nave Door',
+    color: 0x4a4030,
+    x: 2.0,
+    z: -3.2,
+    dialogueId: 'hold_door',
+    hint: 'Hold door / sheep-gate (ferry pattern)',
+    combat: true,
+  },
+  {
+    id: 'hugues',
+    name: 'Captain Hugues',
+    color: 0x4a4858,
+    x: -1.5,
+    z: 0.5,
+    dialogueId: 'hugues',
+    hint: 'Northern captain',
+  },
+  {
+    id: 'serena',
+    name: 'Na Serena',
+    color: 0x5a5040,
+    x: 2.2,
+    z: 1.0,
+    dialogueId: 'serena',
+    hint: 'Vine widow — name seed',
   },
   {
     id: 'road_back',

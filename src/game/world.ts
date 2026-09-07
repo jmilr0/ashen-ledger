@@ -33,6 +33,9 @@ const PATH = {
   pillar: './models/graveyard/pillar-square.glb',
   barrel: './models/pirate/barrel.glb',
   crate: './models/pirate/crate.glb',
+  badgeBandit: './models/characters/badge_bandit.glb',
+  badgeBanditB: './models/characters/badge_bandit_b.glb',
+  ferryRope: './models/props/ferry_rope.glb',
 };
 
 /** Axis-aligned collider on XZ plane (y ignored for walk). */
@@ -111,7 +114,7 @@ export class World {
         g = this.makeFerryPlaceholder();
       } else if (n.id === 'bandits') {
         g = this.makeBanditPlaceholder(n.color);
-      } else if (n.id === 'priory_door' || n.id === 'corbieres_road') {
+      } else if (n.id === 'priory_door' || n.id === 'corbieres_road' || n.id === 'hold_door') {
         g = this.makeDoorPlaceholder(n.color);
       } else if (n.id === 'mold') {
         g = this.makeCharacter(n.color, 0.52);
@@ -542,7 +545,20 @@ export class World {
     await this.upgradeCharacter('player', take('player'), 1.75, 0x6a5a48);
     await this.upgradeNpc('cellarer', take('cellarer'), 1.5, 0x6a6a58);
     await this.upgradeNpc('mairia', take('mairia'), 1.5, 0x6a5038);
-    // ferry + bandits stay as labeled placeholders (no ghost/fantasy models)
+    // Art hooks — use GLBs when present; keep placeholders if missing
+    const banditA = await loadModel(PATH.badgeBandit);
+    const banditB = await loadModel(PATH.badgeBanditB);
+    if (banditA) {
+      await this.upgradeNpc('bandits', banditA, 1.7, 0x3a3028, 0.1);
+      // optional second figure already baked or skip
+      if (banditB) {
+        /* second mesh reserved — Art may dual-body later */
+      }
+    }
+    const ferryArt = await loadModel(PATH.ferryRope);
+    if (ferryArt) {
+      await this.upgradeNpc('ferry', ferryArt, 1.4, 0x4a4030, 0.15);
+    }
 
     this.colliders = [];
     this.addAABB(-4.2, -3.0, -GRID * TILE * 0.45, -0.9);

@@ -298,12 +298,17 @@ export class Game {
   }
 
   private applyNpcVisibility(): void {
-    if (!this.world || this.mapZone !== 'act1_road') return;
-    if (this.flags.ambush_done) this.world.hideNpc('bandits', true);
-    if (this.flags.ferry_done) this.world.hideNpc('ferry', true);
-    // Corbières road only after Act I closer
-    const act1Done = !!this.flags.act1_complete || !!this.flags.narbonne_outcome;
-    this.world.hideNpc('corbieres_road', !act1Done);
+    if (!this.world) return;
+    if (this.mapZone === 'act1_road') {
+      if (this.flags.ambush_done) this.world.hideNpc('bandits', true);
+      if (this.flags.ferry_done) this.world.hideNpc('ferry', true);
+      const act1Done = !!this.flags.act1_complete || !!this.flags.narbonne_outcome;
+      this.world.hideNpc('corbieres_road', !act1Done);
+      return;
+    }
+    if (this.mapZone === 'corbieres') {
+      if (this.flags.hold_door_done) this.world.hideNpc('hold_door', true);
+    }
   }
 
   private renderHud(): void {
@@ -448,6 +453,38 @@ export class Game {
       this.startDialogue('priory_stub');
       return;
     }
+    if (n.id === 'berna') {
+      this.startDialogue('berna');
+      return;
+    }
+    if (n.id === 'hugues') {
+      if (!this.flags.priory_path && !this.flags.hold_door_done && !this.flags.priory_fight_done) {
+        this.toast('Settle Berna’s yard fork first.');
+        return;
+      }
+      this.startDialogue('hugues');
+      return;
+    }
+    if (n.id === 'serena') {
+      if (String(this.flags.captain_deal || 'none') === 'none' && !this.flags.talked_hugues) {
+        this.toast('Speak Captain Hugues before Serena’s name.');
+        return;
+      }
+      this.startDialogue('serena');
+      return;
+    }
+    if (n.id === 'hold_door') {
+      if (this.flags.hold_door_done) {
+        this.toast('Sheep-gate already open.');
+        return;
+      }
+      if (this.flags.priory_path !== 'hold_door' && this.flags.priory_path !== 'steal') {
+        this.toast('Commit Berna’s hold-door or steal path first — or talk Hugues after talk path.');
+        return;
+      }
+      this.startDialogue('hold_door');
+      return;
+    }
     if (n.id === 'road_back') {
       this.startDialogue('road_back_narbonne');
       return;
@@ -474,7 +511,11 @@ export class Game {
       else if (this.flags.party_is_forger || !this.flags.seal_intact) startId = 'forger';
       else startId = 'clean';
     }
+    if (id === 'berna' && this.flags.talked_berna) startId = 'after';
+    if (id === 'hugues' && this.flags.talked_hugues) startId = 'after';
+    if (id === 'serena' && this.flags.talked_serena) startId = 'after';
     this.dialogueNode = tree.find((n) => n.id === startId) ?? tree[0];
+    this.dialogueNode = this.maybeAutoPilgrimClose(this.dialogueNode);
     this.screen = 'dialogue';
     this.drawDialogue();
   }
@@ -524,10 +565,32 @@ export class Game {
     }
     if (next) {
       this.dialogueNode = this.dialogueTree.find((n) => n.id === next) ?? null;
+      this.dialogueNode = this.maybeAutoPilgrimClose(this.dialogueNode);
       if (this.dialogueNode) this.drawDialogue();
       return;
     }
     if (!effect || effect === 'end') this.closeDialogue();
+  }
+
+  private maybeAutoPilgrimClose(node: DialogueNode | null): DialogueNode | null {
+    if (!node || this.dialogueNpc !== 'narbonne_agent' || node.id !== 'pilgrims') return node;
+    const trust = Number(this.flags.pilgrim_trust) || 0;
+    if (trust >= 2) {
+      this.applyEffect('narbonne_delivered');
+      return this.dialogueTree.find((n) => n.id === 'close_good') ?? node;
+    }
+    if (trust <= 0) {
+      this.applyEffect('narbonne_delivered');
+      return this.dialogueTree.find((n) => n.id === 'close_cold') ?? node;
+    }
+    return node;
+  }
+
+  private barkOnce(key: string, line: string): void {
+    const flagKey = `bark_${key}`;
+    if (this.flags[flagKey]) return;
+    this.flags[flagKey] = true;
+    this.toast(line);
   }
 
   private adjustTrust(delta: number): void {
@@ -557,6 +620,9 @@ export class Game {
       this.storyBeat =
         'Walk the pilgrim road toward Narbonne. Keep the column fed and the bag dry.';
       this.toast(`Chest carrier: ${who}`);
+      if (who === 'clerk') this.barkOnce('carrier_clerk', 'Guillem: Arnau has the bag. If they want it, they go through mail.');
+      if (who === 'sergeant') this.barkOnce('carrier_sergeant', 'Arnau: Heavy hands, dry wax. Don’t flex the seal.');
+      if (who === 'convers') this.barkOnce('carrier_convers', 'Catalana: Peire already carries keys. One more latch won’t kill him.');
       this.refreshObjective();
       this.persist();
       return 'close';
@@ -576,6 +642,7 @@ export class Game {
         qty: 1,
       });
       this.toast('True seal broken. Party is marked as forger.');
+      this.barkOnce('break_true_seal', 'Guillem: We’re the next forgers on this road. Formation stays tight.');
       this.refreshObjective();
       this.persist();
       return 'close';
@@ -777,12 +844,130 @@ export class Game {
       return 'close';
     }
 
+    if (
+      effect === 'priory_path_steal' ||
+      effect === 'priory_path_talk' ||
+      effect === 'priory_path_hold'
+    ) {
+      const path =
+        effect === 'priory_path_steal' ? 'steal' : effect === 'priory_path_talk' ? 'talk' : 'hold_door';
+      this.flags.priory_path = path;
+      this.flags.talked_berna = true;
+      this.flags.act2_beat = 'fork';
+      if (path === 'steal') this.barkOnce('priory_path_steal', 'Peire: Latch is soft. Smoke helps.');
+      if (path === 'talk') this.barkOnce('priory_path_talk', 'Arnau: If they hear the rim name, some will leave without blood.');
+      if (path === 'hold_door') this.barkOnce('priory_path_hold', 'Guillem: Door’s mine. Sheep-gate’s yours.');
+      return 'continue';
+    }
+
+    if (effect === 'end_priory_fork') {
+      this.flags.talked_berna = true;
+      const path = String(this.flags.priory_path || 'talk');
+      if (path === 'steal') {
+        this.storyBeat = 'Chest taken quiet. Get out the sheep-gate before the loft notices.';
+        this.flags.smoke_loft = true;
+      } else if (path === 'hold_door') {
+        this.storyBeat = 'Nave door held. Column / locals through the sheep-gate — then the loft.';
+      } else {
+        this.storyBeat = 'Crowd thinning. Hold the yard or let Hugues claim the stones.';
+      }
+      this.flags.act2_beat = 'fork';
+      this.refreshObjective();
+      this.persist();
+      // talk + high trust can skip fight → go speak Hugues
+      if (path === 'talk' && (Number(this.flags.pilgrim_trust) || 0) >= 2) {
+        this.toast('Crowd parts without steel — speak Hugues.');
+        return 'close';
+      }
+      if (path === 'talk') {
+        this.startCombat('priory_yard');
+        return 'combat';
+      }
+      if (path === 'steal' || path === 'hold_door') {
+        this.toast(path === 'steal' ? 'Sheep-gate exit — expect pickets.' : 'Form at the nave door.');
+        return 'close';
+      }
+      return 'close';
+    }
+
+    if (effect === 'start_hold_door') {
+      if (this.flags.priory_path === 'steal') {
+        this.startCombat('priory_yard');
+      } else {
+        this.startCombat('hold_door');
+      }
+      return 'combat';
+    }
+
+    if (effect === 'need_mold_kept') {
+      if (this.flags.mold_fate !== 'kept') {
+        this.dialogueNode = this.dialogueTree.find((n) => n.id === 'no_mold') ?? this.dialogueNode;
+        this.drawDialogue();
+        return 'stay';
+      }
+      return 'continue';
+    }
+
+    if (
+      effect === 'captain_vines_spared' ||
+      effect === 'captain_vines_seized' ||
+      effect === 'captain_bribed_off'
+    ) {
+      const deal =
+        effect === 'captain_vines_spared'
+          ? 'vines_spared'
+          : effect === 'captain_vines_seized'
+            ? 'vines_seized'
+            : 'bribed_off';
+      this.flags.captain_deal = deal;
+      this.flags.talked_hugues = true;
+      this.flags.act2_beat = 'aftermath';
+      if (deal === 'vines_spared') this.barkOnce('captain_vines_spared', 'Guillem: Empty stone. People walk.');
+      if (deal === 'vines_seized') this.barkOnce('captain_vines_seized', 'Catalana: He’ll count vines either way. We bought time, not mercy.');
+      if (deal === 'bribed_off') this.barkOnce('captain_bribed_off', 'Peire: Coin gone. Column still eats.');
+      this.storyBeat =
+        'Priory settled with Hugues. Speak Na Serena for the lord’s name — Act III seed.';
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'learn_lord_name') {
+      this.flags.lord_name = 'Raimon of Quéribus';
+      this.flags.lord_name_known = true;
+      this.flags.talked_serena = true;
+      this.addItemOnce({
+        id: 'hill_lord_name',
+        name: 'Name: Raimon of Quéribus',
+        description: 'Write it once. Burn the scrap. Act III seed.',
+        qty: 1,
+      });
+      this.barkOnce('learn_lord_name', 'Arnau: Raimon of Quéribus. Write it once. Burn the scrap.');
+      this.storyBeat = 'Name seeded: Raimon of Quéribus. Act III still ahead.';
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'lord_name_withheld') {
+      this.flags.lord_name_known = false;
+      this.flags.talked_serena = true;
+      this.barkOnce('lord_name_withheld', 'Elias: A roof later may cost more than a name now.');
+      this.storyBeat = 'Name withheld. A roof may open in Act III — splinter still waits.';
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+
     if (effect === 'enter_corbieres') {
       this.mapZone = 'corbieres';
       this.flags.map_zone = 'corbieres';
       this.flags.act1_complete = true;
-      this.storyBeat = 'Corbières priory road (Act II stub). Narrative owns the gate.';
-      this.toast('Entering Corbières road stub.');
+      this.flags.act2_beat = 'road';
+      this.storyBeat =
+        'Corbières priory. Splinter on a false altar — northern captain wants the ruin as a warrant.';
+      this.barkOnce('enter_priory', 'Catalana: Real stone. False altar. Watch the loft.');
+      this.toast('Entering Corbières priory road.');
       this.persist();
       this.closeDialogue();
       void this.enterHub(CORBIERES_START.x, CORBIERES_START.z);
@@ -895,8 +1080,16 @@ export class Game {
         ? 'PAUSED — Space to resume · click portrait · queue orders'
         : 'LIVE — Space to pause'
       : `Round ${c.round} · sergeant→convers→guide→clerk→surgeon`;
+    const encLabel =
+      c.encounter === 'ambush'
+        ? 'Borrowed-badge ambush'
+        : c.encounter === 'ferry'
+          ? 'Ferry rope'
+          : c.encounter === 'hold_door'
+            ? 'Nave door / sheep-gate'
+            : 'Priory yard';
     panel.innerHTML = `
-      <div class="combat-meta stats">${banner} · ${c.encounter === 'ambush' ? 'Borrowed-badge ambush' : 'Ferry rope'}${rtwp ? '' : ' · rounds fallback'}</div>
+      <div class="combat-meta stats">${banner} · ${encLabel}${rtwp ? '' : ' · rounds fallback'}</div>
       <div class="enemy-row">${enemies}</div>
       <div class="enemy-row combat-portraits">${allies}</div>
       <div class="combat-log">${log}</div>
@@ -956,13 +1149,27 @@ export class Game {
         this.flags.act1_beat = 'after_bandits';
         this.storyBeat = 'Bandits cleared. Next: Father Ramon’s porch, then the mold.';
         this.toast('Ambush broken.');
-      } else {
+      } else if (c.encounter === 'ferry') {
         this.flags.ferry_done = true;
         this.world?.hideNpc('ferry', true);
         this.flags.act1_beat = 'ferry';
-        this.storyBeat =
-          'Ferry rope cut. Deliver the letter to the Narbonne agent.';
+        this.storyBeat = 'Ferry rope cut. Deliver the letter to the Narbonne agent.';
+        this.barkOnce('ferry_cut', 'Peire: Rope’s cut. Move the column.');
         this.toast('Crossing freed.');
+      } else if (c.encounter === 'hold_door') {
+        this.flags.hold_door_done = true;
+        this.flags.priory_fight_done = true;
+        this.flags.act2_beat = 'fight';
+        this.world?.hideNpc('hold_door', true);
+        this.storyBeat =
+          'Priory settled. Speak Hugues or ride — Act III still needs names and the splinter’s end.';
+        this.toast('Sheep-gate open — nave held.');
+      } else if (c.encounter === 'priory_yard') {
+        this.flags.priory_fight_done = true;
+        this.flags.act2_beat = 'fight';
+        this.storyBeat =
+          'Yard cleared. Speak Hugues — Act III still needs names and the splinter’s end.';
+        this.toast('Yard scuffle over.');
       }
       this.refreshObjective();
       this.persist();
@@ -1051,7 +1258,11 @@ export class Game {
       .map(
         (i) => `<div class="item-row"><div><strong>${i.name}</strong> ×${i.qty}<br/>
         <span class="stats">${i.description}</span></div>
-        ${i.id === 'bandages' ? `<button class="btn" data-use="${i.id}">Use</button>` : ''}</div>`
+        ${
+          i.id === 'bandages' || (i.id === 'true_letter' && this.flags.seal_intact)
+            ? `<button class="btn" data-use="${i.id}">${i.id === 'true_letter' ? 'Peek seal' : 'Use'}</button>`
+            : ''
+        }</div>`
       )
       .join('');
     panel.innerHTML = `<h2>Inventory</h2><div class="items">${items || '<em>Empty</em>'}</div>
@@ -1078,6 +1289,10 @@ export class Game {
       item.qty -= 1;
       if (item.qty <= 0) this.inventory = this.inventory.filter((i) => i.qty > 0);
       this.toast(`Boiled linen on ${lead.name}.`);
+      return;
+    }
+    if (id === 'true_letter') {
+      this.applyEffect('break_true_seal');
     }
   }
 

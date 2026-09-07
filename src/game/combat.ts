@@ -76,21 +76,22 @@ export class CombatSession {
       .filter((p): p is PartyMember => !!p)
       .map((p) => this.makeAlly(p));
 
-    if (opts.encounter === 'ambush') {
+    if (opts.encounter === 'ambush' || opts.encounter === 'priory_yard') {
+      const yard = opts.encounter === 'priory_yard';
       this.enemies = [
         {
-          id: 'bandit_a',
-          name: 'Badge Captain',
-          hp: 18,
-          maxHp: 18,
+          id: yard ? 'picket_a' : 'bandit_a',
+          name: yard ? 'Hugues Picket' : 'Badge Captain',
+          hp: yard ? 16 : 18,
+          maxHp: yard ? 16 : 18,
           atk: 7,
           def: 3,
           isPlayer: false,
           slot: 'frontL',
         },
         {
-          id: 'bandit_b',
-          name: 'Borrowed-Badge Thug',
+          id: yard ? 'picket_b' : 'bandit_b',
+          name: yard ? 'Yard Blade' : 'Borrowed-Badge Thug',
           hp: 14,
           maxHp: 14,
           atk: 6,
@@ -99,12 +100,18 @@ export class CombatSession {
           slot: 'frontR',
         },
       ];
-      this.log.push('Borrowed-badge ambush on the wet road. Formation — Point then Call out if you can.');
+      this.log.push(
+        yard
+          ? 'Priory yard scuffle. Same jobs — clear the pickets.'
+          : 'Borrowed-badge ambush on the wet road. Formation — Point then Call out if you can.'
+      );
     } else {
+      // ferry + hold_door (ferry pattern: Hold then Cut)
+      const door = opts.encounter === 'hold_door';
       this.enemies = [
         {
-          id: 'ferry_guard',
-          name: 'River Watch',
+          id: door ? 'nave_guard' : 'ferry_guard',
+          name: door ? 'Nave Guard' : 'River Watch',
           hp: 16,
           maxHp: 16,
           atk: 6,
@@ -113,8 +120,8 @@ export class CombatSession {
           slot: 'frontL',
         },
         {
-          id: 'ferry_thug',
-          name: 'Toll Blade',
+          id: door ? 'loft_blade' : 'ferry_thug',
+          name: door ? 'Loft Blade' : 'Toll Blade',
           hp: 12,
           maxHp: 12,
           atk: 5,
@@ -125,10 +132,12 @@ export class CombatSession {
       ];
       const stress =
         (opts.pilgrimTrust ?? 2) <= 0
-          ? ' Column is scattered — ferry starts stressed.'
+          ? ' Column is scattered — start stressed.'
           : '';
       this.log.push(
-        'Ferry rope under pressure. Sergeant Holds; Convers must Cut rope to free the crossing.' + stress
+        door
+          ? 'Nave door under pressure. Sergeant Holds; Convers Cuts the sheep-gate latch (Cut rope).' + stress
+          : 'Ferry rope under pressure. Sergeant Holds; Convers must Cut rope to free the crossing.' + stress
       );
     }
 
@@ -370,8 +379,8 @@ export class CombatSession {
           { id: 'club', label: 'Club', enabled: this.living('enemies').length > 0 },
           {
             id: 'cut_rope',
-            label: 'Cut rope',
-            enabled: this.encounter === 'ferry' && !this.ropeCut,
+            label: this.encounter === 'hold_door' ? 'Open sheep-gate' : 'Cut rope',
+            enabled: (this.encounter === 'ferry' || this.encounter === 'hold_door') && !this.ropeCut,
           },
           {
             id: 'kick_latch',
@@ -682,7 +691,7 @@ export class CombatSession {
   }
 
   private checkEnd(): void {
-    if (this.encounter === 'ferry') {
+    if (this.encounter === 'ferry' || this.encounter === 'hold_door') {
       if (this.ropeCut) {
         this.over = true;
         this.victory = true;

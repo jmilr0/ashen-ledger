@@ -133,17 +133,38 @@ export function buildJournal(flags: FlagMap, _party?: PartyMember[]): JournalEnt
     entries.push({ id: 'q_letter', title: 'Letter for Narbonne', body, status, sort: 70 });
   }
 
-  // q_corbieres — Act II scaffold unlock
+  // q_corbieres — Act II
   if (act1Complete || !!flags.act1_complete) {
     const inHills = String(flags.map_zone) === 'corbieres';
+    const path = String(flags.priory_path || '');
+    const deal = String(flags.captain_deal || 'none');
+    let body = inHills
+      ? 'Hill road to the ruined priory. Berna holds the yard — steal, talk, or hold the nave door.'
+      : 'Act I closed. Take the hill road from Narbonne toward the ruined priory in the Corbières.';
+    let status: JournalEntry['status'] = 'active';
+    if (path) {
+      body = `Priory path: ${path.replace('_', ' ')}. Hugues wants the ruin as a warrant.`;
+    }
+    if (deal !== 'none') {
+      status = 'done';
+      body = `Hugues deal: ${deal.split('_').join(' ')}. Serena may still name the hill lord.`;
+    }
+    entries.push({ id: 'q_corbieres', title: 'Corbières priory', body, status, sort: 80 });
+  }
+
+  if (String(flags.captain_deal || 'none') !== 'none' || !!flags.talked_serena) {
+    const name = String(flags.lord_name || '');
+    const known = !!flags.lord_name_known;
     entries.push({
-      id: 'q_corbieres',
-      title: 'Corbières priory road',
-      body: inHills
-        ? 'Hill road above Narbonne. Priory gate is a Narrative stub — Act II story not wired yet.'
-        : 'Act I closed. Take the hill road from Narbonne toward the ruined priory in the Corbières.',
-      status: 'active',
-      sort: 80,
+      id: 'q_name_seed',
+      title: 'The hill lord’s name',
+      body: known
+        ? `Na Serena named ${name}. Act III seed.`
+        : flags.talked_serena
+          ? 'Name withheld — a roof may matter more than a hanging.'
+          : 'Speak Na Serena after Hugues for the purse that paid the die.',
+      status: flags.talked_serena ? 'done' : 'active',
+      sort: 90,
     });
   }
 

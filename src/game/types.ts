@@ -6,7 +6,7 @@ export type ChestCarrier = 'clerk' | 'sergeant' | 'convers';
 
 export type MoldFate = '' | 'given_viscount' | 'drowned' | 'kept';
 
-export type CombatEncounter = 'ambush' | 'ferry';
+export type CombatEncounter = 'ambush' | 'ferry' | 'hold_door' | 'priory_yard';
 
 export type MapZone = 'act1_road' | 'corbieres';
 

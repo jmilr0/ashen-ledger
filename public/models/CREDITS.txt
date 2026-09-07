@@ -19,6 +19,14 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   leper_rest (tools/make_leper_rest.py) — Act III leper-house Rest cot, linen, basin, willow sprig.
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
 
-Art path hooks (optional drops): mile_marker.glb, mold_cavity.glb, cloister_arcade.glb,
-cloister_well.glb, leper_rest.glb under props/;
-narbonne_agent.glb (or narbonne_courier.glb / hooded_courier.glb), badge_bandit*.glb under characters/.
+INTERIM (not final Art) — Berna/Hugues/Serena NPC meshes:
+  Prefer characters/berna|hugues|serena.glb when Art ships them;
+  else brin/rowan/mirelle stand-ins; else reuse guide/sergeant/convers party meshes
+  with different scale/tint. Do not treat remaps as hero character art.
+
+Art path hooks (optional drops, non-blocking):
+  props/: mile_marker, mold_cavity, cloister_arcade, cloister_well, leper_rest,
+    road_cart, road_fence_run, mud_rut_patch, pilgrim_bundle, wayside_cross, ferry_boat;
+  characters/: narbonne_agent (or narbonne_courier / hooded_courier), badge_bandit*.glb,
+    berna/hugues/serena (optional named).
+  GD: cart/fence colliders off walk lane; mud_rut_patch + pilgrim_bundle visual-only.

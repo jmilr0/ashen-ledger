@@ -63,9 +63,24 @@ const PATH = {
   // Upcoming Art aliases (non-blocking) — prefer agent, then courier names
   narbonneCourier: './models/characters/narbonne_courier.glb',
   hoodedCourier: './models/characters/hooded_courier.glb',
+  // Interim NPC stand-ins (brin/rowan/mirelle) — not final hero art
   bernaNpc: './models/characters/brin.glb',
   huguesNpc: './models/characters/rowan.glb',
   serenaNpc: './models/characters/mirelle.glb',
+  // Optional named NPC Art (prefer when present)
+  bernaArt: './models/characters/berna.glb',
+  huguesArt: './models/characters/hugues.glb',
+  serenaArt: './models/characters/serena.glb',
+  // Upcoming Art road dressing (exact names) — non-blocking loadModel
+  roadCart: './models/props/road_cart.glb',
+  roadFenceRun: './models/props/road_fence_run.glb',
+  mudRutPatch: './models/props/mud_rut_patch.glb',
+  pilgrimBundle: './models/props/pilgrim_bundle.glb',
+  waysideCross: './models/props/wayside_cross.glb',
+  ferryBoat: './models/props/ferry_boat.glb',
+  // Kenney extras for zone densify (already licensed in repo)
+  borderPillar: './models/graveyard/border-pillar.glb',
+  lanternCandle: './models/graveyard/lantern-candle.glb',
 };
 
 /** Axis-aligned collider on XZ plane (y ignored for walk). */
@@ -493,6 +508,12 @@ export class World {
       [5.0, -3.4, 0.5, 0.28],
       [-5.0, 2.2, 0.4, 0.22],
       [5.1, 3.0, 0.48, 0.26],
+      [-4.4, -0.4, 0.42, 0.24],
+      [4.6, -0.2, 0.46, 0.26],
+      [-1.6, 4.8, 0.38, 0.2],
+      [1.4, 4.6, 0.4, 0.22],
+      [-5.4, -4.8, 0.5, 0.28],
+      [5.3, 1.8, 0.44, 0.24],
     ]);
 
     const labelCanvas = document.createElement('canvas');
@@ -578,6 +599,10 @@ export class World {
       [4.0, -3.6, 0.55, 0.3],
       [-3.2, 4.2, 0.7, 0.35],
       [3.4, 4.0, 0.65, 0.34],
+      [-4.8, 0.2, 0.48, 0.26],
+      [4.6, -0.6, 0.5, 0.28],
+      [-1.8, 4.6, 0.42, 0.24],
+      [1.6, 4.5, 0.44, 0.25],
     ]);
     const stump = new THREE.Mesh(
       new THREE.CylinderGeometry(0.28, 0.35, 0.35, 8),
@@ -1061,10 +1086,42 @@ export class World {
   }
 
 
-  /** Non-blocking: barren trees / fences for stub zones (GLB when present). */
+  /** Non-blocking: densify Corbières / Act III with Kenney + Art road dressing. */
   private async tryScatterZoneDressing(): Promise<void> {
     const pine = await loadModel(PATH.pine);
-    const fence = await loadModel(PATH.fence);
+    // Prefer Art fence run; fall back to Kenney iron fence
+    const fenceArt = await loadModel(PATH.roadFenceRun);
+    const fence = fenceArt ?? (await loadModel(PATH.fence));
+    const mile = await loadModel(PATH.mileMarker);
+    const cartArt = await loadModel(PATH.roadCart);
+    const cart = cartArt ?? (await loadModel(PATH.cart));
+    const mud = await loadModel(PATH.mudRutPatch);
+    const bundle = await loadModel(PATH.pilgrimBundle);
+    const cross = await loadModel(PATH.waysideCross);
+    const barrel = await loadModel(PATH.barrel);
+    const crate = await loadModel(PATH.crate);
+    const bench = await loadModel(PATH.bench);
+    const pillar = await loadModel(PATH.borderPillar);
+    const light = await loadModel(PATH.lightpost);
+
+    const placeFence = (
+      proto: THREE.Group,
+      x: number,
+      z: number,
+      rot: number,
+      withCollider: boolean
+    ) => {
+      const f = proto.clone(true);
+      f.position.set(x, 0, z);
+      f.rotation.y = rot;
+      f.name = 'env-fence';
+      this.scene.add(f);
+      // GD: cart/fence colliders stay OFF the walk lane (protect ~0.9m follower trail)
+      if (withCollider) {
+        this.addBoxCollider(x, z, rot === 0 ? 0.7 : 0.12, rot === 0 ? 0.12 : 0.7);
+      }
+    };
+
     if (this.zone === 'corbieres') {
       if (pine) {
         for (const [x, z, h] of [
@@ -1073,6 +1130,8 @@ export class World {
           [-5.5, 4.6, 1.9],
           [5.4, 4.5, 2.1],
           [-5.6, 1.0, 1.7],
+          [5.5, 2.2, 1.8],
+          [-5.3, -1.8, 1.85],
         ] as const) {
           const t = pine.clone(true);
           fitToHeight(t, h);
@@ -1084,23 +1143,150 @@ export class World {
         }
       }
       if (fence) {
-        fitToHeight(fence, 1.0);
+        fitToHeight(fence, fenceArt ? 1.15 : 1.0);
         tintMeshes(fence, 0x3a3830, 0.3);
+        // Edge runs only — leave center road (±~1.0) + approaches clear
         for (const [x, z, rot] of [
           [-4.8, 5.0, 0],
           [-2.6, 5.0, 0],
           [2.8, 5.0, 0],
+          [4.6, 5.0, 0],
           [5.0, -1.0, Math.PI / 2],
+          [5.0, 1.4, Math.PI / 2],
+          [-5.1, -2.4, Math.PI / 2],
+          [-5.1, 2.8, Math.PI / 2],
         ] as const) {
-          const f = fence.clone(true);
-          f.position.set(x, 0, z);
-          f.rotation.y = rot;
-          f.name = 'env-fence';
-          this.scene.add(f);
-          this.addBoxCollider(x, z, rot === 0 ? 0.7 : 0.12, rot === 0 ? 0.12 : 0.7);
+          placeFence(fence, x, z, rot, true);
+        }
+      }
+      // Repeated mile markers / wayside crosses — roadside, not in lane
+      if (mile) {
+        fitToHeight(mile, 1.15);
+        tintMeshes(mile, 0x6a6860, 0.12);
+        for (const [x, z] of [
+          [-1.55, -4.2],
+          [1.6, -1.2],
+          [-1.6, 1.8],
+          [1.55, 4.0],
+        ] as const) {
+          const m = mile.clone(true);
+          m.position.set(x, 0, z);
+          m.name = 'mile-marker-art';
+          this.scene.add(m);
+          this.addCircleCollider(x, z, 0.22);
+        }
+      }
+      if (cross) {
+        fitToHeight(cross, 1.6);
+        tintMeshes(cross, 0x5a5848, 0.12);
+        cross.position.set(1.7, 0, -3.6);
+        cross.name = 'wayside-cross-art';
+        this.scene.add(cross);
+        this.addCircleCollider(1.7, -3.6, 0.22);
+      }
+      // Cart OFF walk lane (east scrub)
+      if (cart) {
+        fitToHeight(cart, 0.9);
+        tintMeshes(cart, 0x4a4034, 0.2);
+        cart.position.set(3.6, 0, 2.4);
+        cart.rotation.y = -0.55;
+        cart.name = 'road-cart-art';
+        this.scene.add(cart);
+        this.addBoxCollider(3.6, 2.4, 0.65, 0.4);
+      }
+      // Visual-only Art dressing (no colliders per GD)
+      if (mud) {
+        fitToHeight(mud, 0.08);
+        tintMeshes(mud, 0x3a342c, 0.15);
+        for (const [x, z, rot] of [
+          [0.15, -2.8, 0.1],
+          [-0.1, 0.6, -0.2],
+          [0.2, 2.4, 0.05],
+        ] as const) {
+          const p = mud.clone(true);
+          p.position.set(x, 0.01, z);
+          p.rotation.y = rot;
+          p.name = 'mud-rut-art';
+          this.scene.add(p);
+        }
+      }
+      if (bundle) {
+        fitToHeight(bundle, 0.55);
+        tintMeshes(bundle, 0x5a4838, 0.12);
+        for (const [x, z] of [
+          [-3.4, -0.8],
+          [3.2, -2.6],
+          [-3.6, 3.0],
+        ] as const) {
+          const b = bundle.clone(true);
+          b.position.set(x, 0, z);
+          b.name = 'pilgrim-bundle-art';
+          this.scene.add(b);
+        }
+      }
+      if (barrel) {
+        for (const [x, z] of [
+          [-3.8, 1.6],
+          [3.4, 0.2],
+          [3.8, -3.0],
+        ] as const) {
+          const b = barrel.clone(true);
+          fitToHeight(b, 0.45);
+          tintMeshes(b, 0x5a4838, 0.2);
+          b.position.set(x, 0, z);
+          b.name = 'env-barrel';
+          this.scene.add(b);
+          this.addCircleCollider(x, z, 0.26);
+        }
+      }
+      if (crate) {
+        fitToHeight(crate, 0.4);
+        tintMeshes(crate, 0x5a4838, 0.15);
+        crate.position.set(3.9, 0, 1.6);
+        crate.name = 'env-crate';
+        this.scene.add(crate);
+        this.addBoxCollider(3.9, 1.6, 0.28, 0.28);
+      }
+      if (bench) {
+        fitToHeight(bench, 0.45);
+        tintMeshes(bench, 0x4a4034, 0.15);
+        bench.position.set(-3.2, 0, 2.2);
+        bench.rotation.y = 0.35;
+        bench.name = 'env-bench';
+        this.scene.add(bench);
+        this.addBoxCollider(-3.2, 2.2, 0.5, 0.22);
+      }
+      if (pillar) {
+        fitToHeight(pillar, 1.5);
+        tintMeshes(pillar, 0x5a5848, 0.2);
+        for (const [x, z] of [
+          [-4.2, -4.0],
+          [4.2, -3.8],
+        ] as const) {
+          const p = pillar.clone(true);
+          p.position.set(x, 0, z);
+          p.name = 'env-border-pillar';
+          this.scene.add(p);
+          this.addCircleCollider(x, z, 0.28);
+        }
+      }
+      if (light) {
+        fitToHeight(light, 2.0);
+        tintMeshes(light, 0x4a4838, 0.2);
+        for (const [x, z] of [
+          [-3.0, -4.4],
+          [3.2, 3.6],
+        ] as const) {
+          const p = light.clone(true);
+          p.position.set(x, 0, z);
+          p.name = 'env-lightpost';
+          this.scene.add(p);
+          this.addCircleCollider(x, z, 0.18);
+          this.addLanternLight(x, 1.6, z, 0.45);
         }
       }
     }
+
     if (this.zone === 'act3_close') {
       if (pine) {
         for (const [x, z, h] of [
@@ -1108,6 +1294,8 @@ export class World {
           [5.1, -4.0, 1.85],
           [-5.0, 4.6, 1.9],
           [5.2, 4.4, 2.05],
+          [-5.3, 1.2, 1.75],
+          [5.3, -1.2, 1.8],
         ] as const) {
           const t = pine.clone(true);
           fitToHeight(t, h);
@@ -1119,20 +1307,110 @@ export class World {
         }
       }
       if (fence) {
-        fitToHeight(fence, 1.0);
+        fitToHeight(fence, fenceArt ? 1.15 : 1.0);
         tintMeshes(fence, 0x3a3830, 0.3);
         for (const [x, z, rot] of [
           [-4.6, -4.8, 0],
           [-2.4, -4.8, 0],
+          [2.6, -4.8, 0],
           [4.8, 1.6, Math.PI / 2],
+          [4.8, 3.2, Math.PI / 2],
+          [-4.8, 2.0, Math.PI / 2],
         ] as const) {
-          const f = fence.clone(true);
-          f.position.set(x, 0, z);
-          f.rotation.y = rot;
-          f.name = 'env-fence';
-          this.scene.add(f);
-          this.addBoxCollider(x, z, rot === 0 ? 0.7 : 0.12, rot === 0 ? 0.12 : 0.7);
+          placeFence(fence, x, z, rot, true);
         }
+      }
+      if (mile) {
+        fitToHeight(mile, 1.1);
+        tintMeshes(mile, 0x6a6860, 0.12);
+        for (const [x, z] of [
+          [-1.7, 2.8],
+          [1.8, 2.6],
+          [-3.6, 3.4],
+        ] as const) {
+          const m = mile.clone(true);
+          m.position.set(x, 0, z);
+          m.name = 'mile-marker-art';
+          this.scene.add(m);
+          this.addCircleCollider(x, z, 0.22);
+        }
+      }
+      if (cross) {
+        fitToHeight(cross, 1.55);
+        tintMeshes(cross, 0x5a5848, 0.12);
+        cross.position.set(3.4, 0, 2.8);
+        cross.name = 'wayside-cross-art';
+        this.scene.add(cross);
+        this.addCircleCollider(3.4, 2.8, 0.22);
+      }
+      if (cart) {
+        fitToHeight(cart, 0.88);
+        tintMeshes(cart, 0x4a4034, 0.2);
+        cart.position.set(-3.8, 0, 2.6);
+        cart.rotation.y = 0.7;
+        cart.name = 'road-cart-art';
+        this.scene.add(cart);
+        this.addBoxCollider(-3.8, 2.6, 0.65, 0.4);
+      }
+      if (mud) {
+        fitToHeight(mud, 0.08);
+        tintMeshes(mud, 0x3a342c, 0.15);
+        for (const [x, z, rot] of [
+          [0.0, 0.4, 0.12],
+          [0.3, -0.8, -0.15],
+        ] as const) {
+          const p = mud.clone(true);
+          p.position.set(x, 0.01, z);
+          p.rotation.y = rot;
+          p.name = 'mud-rut-art';
+          this.scene.add(p);
+        }
+      }
+      if (bundle) {
+        fitToHeight(bundle, 0.55);
+        tintMeshes(bundle, 0x5a4838, 0.12);
+        for (const [x, z] of [
+          [-3.4, -3.0],
+          [3.6, 0.6],
+        ] as const) {
+          const b = bundle.clone(true);
+          b.position.set(x, 0, z);
+          b.name = 'pilgrim-bundle-art';
+          this.scene.add(b);
+        }
+      }
+      if (barrel) {
+        for (const [x, z] of [
+          [-3.8, -0.4],
+          [3.6, -3.2],
+        ] as const) {
+          const b = barrel.clone(true);
+          fitToHeight(b, 0.45);
+          tintMeshes(b, 0x5a4838, 0.2);
+          b.position.set(x, 0, z);
+          b.name = 'env-barrel';
+          this.scene.add(b);
+          this.addCircleCollider(x, z, 0.26);
+        }
+      }
+      if (bench) {
+        fitToHeight(bench, 0.45);
+        tintMeshes(bench, 0x4a4034, 0.15);
+        bench.position.set(3.2, 0, -0.8);
+        bench.rotation.y = -0.4;
+        bench.name = 'env-bench';
+        this.scene.add(bench);
+        this.addBoxCollider(3.2, -0.8, 0.5, 0.22);
+      }
+      if (light) {
+        fitToHeight(light, 2.0);
+        tintMeshes(light, 0x4a4838, 0.2);
+        const p = light.clone(true);
+        p.position.set(-3.4, 0, 3.2);
+        p.name = 'env-lightpost';
+        this.scene.add(p);
+        this.addCircleCollider(-3.4, 3.2, 0.18);
+        this.addLanternLight(-3.4, 1.6, 3.2, 0.45);
       }
     }
   }
@@ -1218,6 +1496,117 @@ export class World {
       well.name = 'cloister-well-art';
       this.scene.add(well);
       this.addBoxCollider(cx + 1.05, cz + 0.95, 0.7, 0.7);
+    }
+
+    // Art road dressing pre-hooks (Act I) — cart/fence OFF walk lane; mud/bundle visual-only
+    await this.tryHookRoadDressingArt();
+  }
+
+  /** Non-blocking Art road props — exact names under props/; GD collision rules. */
+  private async tryHookRoadDressingArt(): Promise<void> {
+    if (this.zone !== 'act1_road') return;
+
+    const cart = (await loadModel(PATH.roadCart)) ?? (await loadModel(PATH.cart));
+    if (cart) {
+      fitToHeight(cart, 0.9);
+      tintMeshes(cart, 0x4a4034, 0.2);
+      // East of road strip (road ~x=0.2, width 2.4) — keep follower trail clear
+      cart.position.set(3.4, 0, -0.6);
+      cart.rotation.y = -0.35;
+      cart.name = 'road-cart-art';
+      this.scene.add(cart);
+      this.addBoxCollider(3.4, -0.6, 0.65, 0.4);
+    }
+
+    const fenceRun = (await loadModel(PATH.roadFenceRun)) ?? (await loadModel(PATH.fence));
+    if (fenceRun) {
+      fitToHeight(fenceRun, 1.1);
+      tintMeshes(fenceRun, 0x3a3830, 0.28);
+      for (const [x, z, rot] of [
+        [-4.4, 4.6, 0],
+        [4.4, -3.6, Math.PI / 2],
+      ] as const) {
+        const f = fenceRun.clone(true);
+        f.position.set(x, 0, z);
+        f.rotation.y = rot;
+        f.name = 'road-fence-run-art';
+        this.scene.add(f);
+        this.addBoxCollider(x, z, rot === 0 ? 0.7 : 0.12, rot === 0 ? 0.12 : 0.7);
+      }
+    }
+
+    const mud = await loadModel(PATH.mudRutPatch);
+    if (mud) {
+      fitToHeight(mud, 0.08);
+      tintMeshes(mud, 0x3a342c, 0.15);
+      for (const [x, z, rot] of [
+        [0.25, 1.2, 0.08],
+        [0.1, -1.5, -0.12],
+        [0.3, 3.0, 0.04],
+      ] as const) {
+        const p = mud.clone(true);
+        p.position.set(x, 0.01, z);
+        p.rotation.y = rot;
+        p.name = 'mud-rut-art';
+        this.scene.add(p);
+      }
+    }
+
+    const bundle = await loadModel(PATH.pilgrimBundle);
+    if (bundle) {
+      fitToHeight(bundle, 0.55);
+      tintMeshes(bundle, 0x5a4838, 0.12);
+      for (const [x, z] of [
+        [-2.4, 3.2],
+        [3.6, 3.8],
+      ] as const) {
+        const b = bundle.clone(true);
+        b.position.set(x, 0, z);
+        b.name = 'pilgrim-bundle-art';
+        this.scene.add(b);
+      }
+    }
+
+    const cross = await loadModel(PATH.waysideCross);
+    if (cross) {
+      fitToHeight(cross, 1.6);
+      tintMeshes(cross, 0x5a5848, 0.12);
+      cross.position.set(-2.6, 0, 4.2);
+      cross.name = 'wayside-cross-art';
+      this.scene.add(cross);
+      this.addCircleCollider(-2.6, 4.2, 0.22);
+    }
+
+    // Extra mile markers along Fontfroide–Narbonne road (repeat existing prop)
+    const mile = await loadModel(PATH.mileMarker);
+    if (mile) {
+      fitToHeight(mile, 1.15);
+      tintMeshes(mile, 0x6a6860, 0.12);
+      for (const [x, z] of [
+        [-1.5, 2.4],
+        [1.7, -0.8],
+        [-1.55, -4.0],
+      ] as const) {
+        const m = mile.clone(true);
+        m.position.set(x, 0, z);
+        m.name = 'mile-marker-art';
+        this.scene.add(m);
+        this.addCircleCollider(x, z, 0.22);
+      }
+    }
+
+    const boat = await loadModel(PATH.ferryBoat);
+    if (boat) {
+      const ferry = this.activeNpcs.find((n) => n.id === 'ferry');
+      const fx = (ferry?.x ?? 0.5) * TILE;
+      const fz = (ferry?.z ?? -5.0) * TILE;
+      fitToHeight(boat, 1.1);
+      tintMeshes(boat, 0x4a4030, 0.12);
+      boat.position.set(fx + 1.4, 0, fz - 0.2);
+      boat.rotation.y = Math.PI * 0.15;
+      boat.name = 'ferry-boat-art';
+      this.scene.add(boat);
+      this.addBoxCollider(fx + 1.4, fz - 0.2, 0.9, 0.45);
     }
   }
 
@@ -1316,14 +1705,39 @@ export class World {
         this.addBoxCollider(0.2 * TILE, -4.2 * TILE, 0.7, 0.45);
       }
 
-      const npcHooks: Array<{ id: string; path: string; h: number; tint: number }> = [
-        { id: 'berna', path: PATH.bernaNpc, h: 1.65, tint: 0x4a5848 },
-        { id: 'hugues', path: PATH.huguesNpc, h: 1.78, tint: 0x4a4858 },
-        { id: 'serena', path: PATH.serenaNpc, h: 1.68, tint: 0x5a4058 },
+      // Interim remaps (not final Art): dedicated GLB → stand-in → party mesh (scale/tint)
+      const npcHooks: Array<{
+        id: string;
+        paths: string[];
+        h: number;
+        tint: number;
+      }> = [
+        {
+          id: 'berna',
+          paths: [PATH.bernaArt, PATH.bernaNpc, PATH.guide],
+          h: 1.65,
+          tint: 0x4a5848,
+        },
+        {
+          id: 'hugues',
+          paths: [PATH.huguesArt, PATH.huguesNpc, PATH.sergeant],
+          h: 1.82,
+          tint: 0x3a3a48,
+        },
+        {
+          id: 'serena',
+          paths: [PATH.serenaArt, PATH.serenaNpc, PATH.convers],
+          h: 1.68,
+          tint: 0x5a4058,
+        },
       ];
       for (const h of npcHooks) {
-        const art = await loadModel(h.path);
-        if (art) await this.upgradeNpc(h.id, art, h.h, h.tint, 0.12);
+        let art: THREE.Group | null = null;
+        for (const p of h.paths) {
+          art = await loadModel(p);
+          if (art) break;
+        }
+        if (art) await this.upgradeNpc(h.id, art, h.h, h.tint, 0.18);
       }
     }
 

@@ -1865,7 +1865,7 @@ export class Game {
     this.refreshPartyStrip();
   }
 
-  /** Controls help — content/narrative/12-controls-help.md + Eng key list. */
+  /** Controls help — content/narrative/12-controls-help.md as-is. */
   private showHelp(): void {
     this.screen = 'help';
     document.getElementById('help-panel')?.remove();
@@ -1876,14 +1876,12 @@ export class Game {
       <ul class="help-list">
         <li><strong>1–5 / Tab</strong> — who’s in front. Bag pip isn’t the face.</li>
         <li><strong>LMB</strong> move · <strong>RMB</strong> talk / orbit · <strong>Q/R</strong> turn the view</li>
-        <li><strong>E / F</strong> — interact with what’s near</li>
-        <li><strong>J</strong> journal (flags don’t lie politely) · <strong>I</strong> inventory · <strong>C / P</strong> party</li>
+        <li><strong>J</strong> journal (flags don’t lie politely)</li>
         <li><strong>Space</strong> — LIVE / PAUSED. Queue orders while paused; Hold, then Cut.</li>
-        <li><strong>Rest</strong> — Elias and linen, once per beat. Not a spell. (party panel)</li>
-        <li><strong>Ctrl+S</strong> — save the road · <strong>H / ?</strong> — this help</li>
+        <li><strong>Rest</strong> — Elias and linen, once per beat. Not a spell.</li>
       </ul>
       <p class="help-tips">Seals, pilgrims, wet boots. Return closes the panel.</p>
-      <button class="btn" id="close-help">Close</button>`;
+      <button class="btn" id="close-help">Return</button>`;
     this.ui.appendChild(panel);
     panel.querySelector('#close-help')!.addEventListener('click', () => this.closeOverlay());
   }
@@ -1897,28 +1895,30 @@ export class Game {
     panel.className = 'panel';
     const cards = buildEpilogueCards(this.flags, this.party);
     const body = cards
-      .map(
-        (c) => `<div class="epilogue-card">
-          <h3>${c.title}</h3>
-          <p>${c.body.replace(/\n\n/g, '</p><p>')}</p>
-        </div>`
-      )
+      .map((c) => {
+        const paras = c.body
+          .split(/\n\n/)
+          .map((p) => `<p>${p}</p>`)
+          .join('');
+        const head = c.title ? `<h3>${c.title}</h3>` : '';
+        return `<div class="epilogue-card">${head}${paras}</div>`;
+      })
       .join('');
     panel.innerHTML = `<h2>Frame closed — war continues</h2>
       <p class="stats" style="margin-top:0.35rem;opacity:0.75">Dirt and consequence. You do not win the war.</p>
       <div class="epilogue-scroll">${body}</div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
-        <button class="btn primary" id="epilogue-continue">Continue exploring</button>
-        <button class="btn" id="epilogue-new">New game</button>
+        <button class="btn primary" id="epilogue-title">Return to title</button>
+        <button class="btn" id="epilogue-continue">Continue exploring</button>
       </div>`;
     this.ui.appendChild(panel);
+    panel.querySelector('#epilogue-title')!.addEventListener('click', () => {
+      document.getElementById('epilogue-panel')?.remove();
+      this.showTitle();
+    });
     panel.querySelector('#epilogue-continue')!.addEventListener('click', () => {
       this.closeOverlay();
       this.refreshObjective();
-    });
-    panel.querySelector('#epilogue-new')!.addEventListener('click', () => {
-      document.getElementById('epilogue-panel')?.remove();
-      this.newGame();
     });
   }
 

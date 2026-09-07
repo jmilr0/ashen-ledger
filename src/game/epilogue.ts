@@ -8,12 +8,12 @@ export function buildEpilogueCards(
 ): EpilogueCard[] {
   const cards: EpilogueCard[] = [];
 
-  // 1 — Splinter
+  // 1 — Splinter (required)
   const splinter = String(flags.splinter_end || 'altar');
   if (splinter === 'broken_public') {
     let body =
       'They heard it snap. Some cursed you. Some stopped trusting boxes for a week. That is as much truth as a road gets.';
-    if (flags.bark_break_quiet || flags.splinter_quiet) {
+    if (flags.bark_break_quiet) {
       body += ' Peire broke it without a sermon.';
     }
     cards.push({ title: 'Pine in the square', body });
@@ -29,12 +29,12 @@ export function buildEpilogueCards(
     });
   }
 
-  // 2 — Names (first matching)
+  // 2 — Names (required; first matching row from 11-epilogue.md)
   const lord = String(flags.lord_fate || '');
   const mold = String(flags.mold_fate || '');
   const narbonne = String(flags.narbonne_outcome || '');
   const forger = !!flags.party_is_forger || flags.seal_intact === false;
-  let names: EpilogueCard | null = null;
+  let names: EpilogueCard;
   if (lord === 'hidden') {
     names = {
       title: 'A silence owed',
@@ -50,7 +50,7 @@ export function buildEpilogueCards(
       title: 'Cold ash',
       body: 'No name held. Tracks north, then nothing. The die’s payer dissolves into weather.',
     };
-  } else if (mold === 'kept' && (narbonne === 'delivered' || narbonne === 'letter_damaged')) {
+  } else if (mold === 'kept' && narbonne === 'delivered') {
     names = {
       title: 'Die on the table',
       body: 'The mold matched enough. Narbonne has teeth; whose neck it closes on is no longer only yours.',
@@ -70,10 +70,16 @@ export function buildEpilogueCards(
       title: 'Broken wax',
       body: 'Gates remember peekers. Your letter arrived stained, or not at all — either way, clerks will sniff you twice.',
     };
+  } else {
+    // Required card — same body as unnamed when no lord/mold/forger row fired
+    names = {
+      title: 'Cold ash',
+      body: 'No name held. Tracks north, then nothing. The die’s payer dissolves into weather.',
+    };
   }
-  if (names) cards.push(names);
+  cards.push(names);
 
-  // 3 — Road
+  // 3 — Road (required)
   const trust = Number(flags.pilgrim_trust) || 0;
   const bits: string[] = [];
   if (trust >= 2) bits.push('Mairia’s column ate your mud and lived.');
@@ -92,12 +98,14 @@ export function buildEpilogueCards(
 
   cards.push({ title: 'The road', body: bits.join(' ') });
 
-  // 4 — Party (optional)
+  // 4 — Party (optional one-liner card)
   const partyLines: string[] = [];
   if (party.some((p) => p.outForAct)) {
     partyLines.push('Not all five walk out whole. Elias’s linen has limits.');
   }
-  if (forger) partyLines.push('Arnau’s fingers still smell of broken wax.');
+  if (flags.party_is_forger) {
+    partyLines.push('Arnau’s fingers still smell of broken wax.');
+  }
   if (String(flags.chest_carrier || '') === 'convers' && flags.act3_done) {
     partyLines.push('Peire carried keys and a bag and did not drop either.');
   }
@@ -105,9 +113,9 @@ export function buildEpilogueCards(
     cards.push({ title: 'Five jobs', body: partyLines.join(' ') });
   }
 
-  // 5 — Close
+  // 5 — Close (always; Narrative has no title)
   cards.push({
-    title: 'Winter holds',
+    title: '',
     body: 'Winter does not end because five people named a forgery. Northern banners still move. Local counts still play for time. You move pilgrims off one killing ground, put a die out of easy reach, and decide what a stick of wood was worth.\n\nThe war goes on. Your boots are still wet.',
   });
 

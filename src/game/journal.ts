@@ -168,5 +168,76 @@ export function buildJournal(flags: FlagMap, _party?: PartyMember[]): JournalEnt
     });
   }
 
+  // Act III journal map (07-act-iii-thick)
+  if (!!flags.talked_serena || !!flags.act3_beat || !!flags.act3_done) {
+    entries.push({
+      id: 'act3_open',
+      title: 'Act III — names and wood',
+      body: 'Willows, optional leper roof, hill lord or empty house, then the splinter.',
+      status: flags.act3_done ? 'done' : 'active',
+      sort: 100,
+    });
+  }
+  if (flags.talked_leper || flags.bark_rest_leper) {
+    entries.push({
+      id: 'rest_leper',
+      title: 'Night under unringing bells',
+      body: flags.bark_rest_leper
+        ? 'Linen boiled. Willow watch named at dawn. Bleeds cleared for now.'
+        : 'Infirmary roof touched — no captains at the door.',
+      status: flags.talked_leper ? 'done' : 'active',
+      sort: 110,
+    });
+  }
+  {
+    const lord = String(flags.lord_fate || '');
+    if (lord || String(flags.act3_beat) === 'lord') {
+      const body =
+        lord === 'hidden'
+          ? 'Raimon hid you. Silence owed — splinter must not walk his market.'
+          : lord === 'named_hanged'
+            ? 'Name sent toward Narbonne. Hill house empties.'
+            : lord === 'unnamed_fled'
+              ? 'No hanging from your hand — or the house was already empty.'
+              : 'Hill house ahead — hide, name, walk, or grain for silence.';
+      entries.push({
+        id: lord ? `lord_${lord}` : 'lord_pending',
+        title: lord ? `Lord fate — ${lord.split('_').join(' ')}` : 'The hill house',
+        body,
+        status: lord ? 'done' : 'active',
+        sort: 120,
+      });
+    }
+  }
+  {
+    const sp = String(flags.splinter_end || '');
+    if (sp || String(flags.act3_beat) === 'splinter' || String(flags.act3_beat) === 'close') {
+      const body =
+        sp === 'altar'
+          ? 'Splinter quiet on stone. No market walk.'
+          : sp === 'broken_public'
+            ? 'Pine — public or quiet snap. Crowds or fewer ears.'
+            : sp === 'kept_bag'
+              ? 'Wood kept in the bag. You stay the next chest.'
+              : 'Altar, public break, quiet snap, or keep — last magazine in the bag.';
+      entries.push({
+        id: sp ? `splinter_${sp}` : 'splinter_pending',
+        title: sp ? `Splinter — ${sp.split('_').join(' ')}` : 'The wood’s end',
+        body,
+        status: sp ? 'done' : 'active',
+        sort: 130,
+      });
+    }
+  }
+  if (flags.act3_done) {
+    entries.push({
+      id: 'end_act3',
+      title: 'Frame closed — war continues',
+      body: 'Campaign frame closed. Your five still walk. The war goes on.',
+      status: 'done',
+      sort: 140,
+    });
+  }
+
   return entries.sort((a, b) => a.sort - b.sort);
 }

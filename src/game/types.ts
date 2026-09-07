@@ -8,7 +8,7 @@ export type MoldFate = '' | 'given_viscount' | 'drowned' | 'kept';
 
 export type CombatEncounter = 'ambush' | 'ferry' | 'hold_door' | 'priory_yard';
 
-export type MapZone = 'act1_road' | 'corbieres';
+export type MapZone = 'act1_road' | 'corbieres' | 'act3_close';
 
 /** Portrait / select order: 1=guide … 5=surgeon */
 export const SELECT_ORDER: JobId[] = ['guide', 'sergeant', 'convers', 'clerk', 'surgeon'];

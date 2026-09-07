@@ -1,5 +1,7 @@
 3D assets for The Broken Seal (repo: ashen-ledger)
-Characters: clerk GLB (tools/make_clerk.py); odon/marta/etc (tools/make_characters.py);
+Characters: clerk GLB (tools/make_clerk.py); sergeant/convers/guide/surgeon
+  (tools/make_sergeant.py, make_convers.py, make_guide.py, make_surgeon.py + character_common.py);
+  odon/marta/etc (tools/make_characters.py);
   badge_bandit / badge_bandit_b (tools/make_badge_bandit.py) — original dirt-and-mail Broken Seal art.
 Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, dirt-and-mail.
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.

@@ -36,6 +36,12 @@ const PATH = {
   badgeBandit: './models/characters/badge_bandit.glb',
   badgeBanditB: './models/characters/badge_bandit_b.glb',
   ferryRope: './models/props/ferry_rope.glb',
+  // Optional party / priory art — load when present; placeholders otherwise
+  sergeant: './models/characters/sergeant.glb',
+  convers: './models/characters/convers.glb',
+  guide: './models/characters/guide.glb',
+  surgeon: './models/characters/surgeon.glb',
+  clerkParty: './models/characters/clerk.glb',
 };
 
 /** Axis-aligned collider on XZ plane (y ignored for walk). */
@@ -75,10 +81,10 @@ export class World {
     this.zone = zone;
     this.activeNpcs = npcsForZone(zone);
     // Winter day — cold, muted, no gothic magic glow
-    const bg = zone === 'corbieres' ? 0x5a6068 : 0x6a7078;
-    const fog = zone === 'corbieres' ? 0x7a8088 : 0x8a9098;
+    const bg = zone === 'corbieres' ? 0x5a6068 : zone === 'act3_close' ? 0x586068 : 0x6a7078;
+    const fog = zone === 'corbieres' ? 0x7a8088 : zone === 'act3_close' ? 0x788088 : 0x8a9098;
     this.scene.background = new THREE.Color(bg);
-    this.scene.fog = new THREE.FogExp2(fog, zone === 'corbieres' ? 0.032 : 0.028);
+    this.scene.fog = new THREE.FogExp2(fog, zone === 'act1_road' ? 0.028 : 0.032);
 
     const aspect = window.innerWidth / window.innerHeight;
     const frustum = this.frustumSize;
@@ -102,6 +108,7 @@ export class World {
 
     this.setupLights();
     if (zone === 'corbieres') this.buildCorbieresHub();
+    else if (zone === 'act3_close') this.buildAct3Hub();
     else this.buildBaseHub();
 
     this.playerMesh = this.makeCharacter(0x6a5a48, 0.55);
@@ -114,7 +121,20 @@ export class World {
         g = this.makeFerryPlaceholder();
       } else if (n.id === 'bandits') {
         g = this.makeBanditPlaceholder(n.color);
-      } else if (n.id === 'priory_door' || n.id === 'corbieres_road' || n.id === 'hold_door') {
+      } else if (
+        n.id === 'priory_door' ||
+        n.id === 'corbieres_road' ||
+        n.id === 'hold_door' ||
+        n.id === 'act3_road' ||
+        n.id === 'act3_gate' ||
+        n.id === 'road_corbieres' ||
+        n.id === 'road_narbonne' ||
+        n.id === 'river_watch' ||
+        n.id === 'leper' ||
+        n.id === 'lord' ||
+        n.id === 'lord_empty' ||
+        n.id === 'splinter'
+      ) {
         g = this.makeDoorPlaceholder(n.color);
       } else if (n.id === 'mold') {
         g = this.makeCharacter(n.color, 0.52);
@@ -425,6 +445,81 @@ export class World {
     this.scene.add(grid);
   }
 
+  private buildAct3Hub(): void {
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x5a5850,
+      roughness: 0.95,
+      metalness: 0.02,
+    });
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GRID * TILE * 1.4, GRID * TILE * 1.4), groundMat);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.scene.add(this.ground);
+
+    // Soft bounds
+    this.addAABB(-GRID * TILE * 0.55, GRID * TILE * 0.55, -GRID * TILE * 0.55, -GRID * TILE * 0.48);
+    this.addAABB(-GRID * TILE * 0.55, GRID * TILE * 0.55, GRID * TILE * 0.48, GRID * TILE * 0.55);
+    this.addAABB(-GRID * TILE * 0.55, -GRID * TILE * 0.48, -GRID * TILE * 0.55, GRID * TILE * 0.55);
+    this.addAABB(GRID * TILE * 0.48, GRID * TILE * 0.55, -GRID * TILE * 0.55, GRID * TILE * 0.55);
+
+    // Leper house / hill house / square placeholders
+    const hut = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 1.6, 1.8),
+      new THREE.MeshStandardMaterial({ color: 0x4a4840, roughness: 0.92 })
+    );
+    hut.position.set(-2.0 * TILE, 0.8, -1.5 * TILE);
+    hut.castShadow = true;
+    hut.receiveShadow = true;
+    hut.name = 'act3-leper-hut';
+    this.scene.add(hut);
+    this.addBoxCollider(-2.0 * TILE, -1.5 * TILE, 1.0, 0.85);
+
+    const hall = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 2.0, 2.0),
+      new THREE.MeshStandardMaterial({ color: 0x4a4650, roughness: 0.9 })
+    );
+    hall.position.set(1.8 * TILE, 1.0, -2.2 * TILE);
+    hall.castShadow = true;
+    hall.name = 'act3-hill-hall';
+    this.scene.add(hall);
+    this.addBoxCollider(1.8 * TILE, -2.2 * TILE, 1.2, 0.95);
+
+    const altar = new THREE.Mesh(
+      new THREE.BoxGeometry(1.0, 0.7, 0.8),
+      new THREE.MeshStandardMaterial({ color: 0x5a5448, roughness: 0.88 })
+    );
+    altar.position.set(0.2 * TILE, 0.35, -3.8 * TILE);
+    altar.castShadow = true;
+    altar.name = 'act3-splinter-altar';
+    this.scene.add(altar);
+    this.addBoxCollider(0.2 * TILE, -3.8 * TILE, 0.55, 0.45);
+
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 520;
+    labelCanvas.height = 64;
+    const ctx = labelCanvas.getContext('2d')!;
+    ctx.fillStyle = 'rgba(40,36,30,0.55)';
+    ctx.fillRect(0, 0, 520, 64);
+    ctx.fillStyle = '#c8c0b0';
+    ctx.font = '26px Georgia, serif';
+    ctx.fillText('Act III close — leper · lord · splinter', 12, 42);
+    const tex = new THREE.CanvasTexture(labelCanvas);
+    const label = new THREE.Mesh(
+      new THREE.PlaneGeometry(6.8, 0.8),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+    );
+    label.position.set(0, 0.05, 5.2);
+    label.rotation.x = -Math.PI / 2;
+    label.name = 'art-label';
+    this.scene.add(label);
+
+    const grid = new THREE.GridHelper(GRID * TILE, GRID, 0x3a3830, 0x3a3830);
+    grid.position.y = 0.01;
+    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.Material).opacity = 0.16;
+    this.scene.add(grid);
+  }
+
   private makeDoorPlaceholder(color: number): THREE.Group {
     const g = new THREE.Group();
     const frame = new THREE.Mesh(
@@ -509,8 +604,10 @@ export class World {
   }
 
   private async polishWithModels(): Promise<void> {
-    if (this.zone === 'corbieres') {
-      // Stub map — keep box geometry; Art will own meshes later.
+    // Optional party GLBs (non-blocking) — upgrade followers / player when files exist
+    await this.tryHookPartyMeshes();
+    if (this.zone === 'corbieres' || this.zone === 'act3_close') {
+      // Stub maps — keep box geometry; Art will own meshes later.
       this.updateCamera();
       return;
     }
@@ -766,6 +863,37 @@ export class World {
     this.playerMesh.position.copy(pos);
     this.playerMesh.rotation.y = rotY;
     this.scene.add(this.playerMesh);
+  }
+
+
+  /** Non-blocking: if party/priory GLBs exist under public/models, upgrade meshes. */
+  private async tryHookPartyMeshes(): Promise<void> {
+    const jobs: Array<{ id: JobId; path: string; h: number; tint: number }> = [
+      { id: 'clerk', path: PATH.clerkParty, h: 1.75, tint: 0x6a5a48 },
+      { id: 'sergeant', path: PATH.sergeant, h: 1.78, tint: 0x4a4858 },
+      { id: 'convers', path: PATH.convers, h: 1.72, tint: 0x5a5040 },
+      { id: 'guide', path: PATH.guide, h: 1.7, tint: 0x6a5038 },
+      { id: 'surgeon', path: PATH.surgeon, h: 1.68, tint: 0x4a5848 },
+    ];
+    for (const j of jobs) {
+      const art = await loadModel(j.path);
+      if (!art) continue;
+      if (j.id === this.controlledId) {
+        await this.upgradeCharacter('player', art.clone(true), j.h, j.tint);
+      }
+      const follower = this.followerMeshes.get(j.id);
+      if (follower) {
+        // Replace follower capsule with GLB clone when present
+        const mesh = art.clone(true);
+        fitToHeight(mesh, j.h * 0.92);
+        tintMeshes(mesh, j.tint, 0.12);
+        mesh.visible = follower.visible;
+        mesh.position.copy(follower.position);
+        this.scene.remove(follower);
+        this.scene.add(mesh);
+        this.followerMeshes.set(j.id, mesh);
+      }
+    }
   }
 
   private async upgradeNpc(

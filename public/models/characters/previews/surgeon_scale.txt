@@ -1,0 +1,9 @@
+height_m=1.7300
+width_x_m=0.5600
+depth_y_m=0.3243
+tris=15718
+objects=Surgeon_Apron,Surgeon_Basin,Surgeon_Belt,Surgeon_Head,Surgeon_KnifeCase,Surgeon_Limbs,Surgeon_ToolRoll,Surgeon_Tunic
+capsule_diameter_m=0.60
+formation_spacing_m=0.90 (context only)
+target_height_m=1.73
+look=Barber-surgeon: slate tunic, stained linen apron, tool roll, pewter basin, knife case

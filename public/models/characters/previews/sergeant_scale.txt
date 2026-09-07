@@ -1,0 +1,9 @@
+height_m=1.7800
+width_x_m=0.5210
+depth_y_m=0.3119
+tris=13618
+objects=Sergeant_Belt,Sergeant_Coif,Sergeant_Hauberk,Sergeant_Head,Sergeant_Kit,Sergeant_Limbs,Sergeant_Spear,Sergeant_Surcoat
+capsule_diameter_m=0.60
+formation_spacing_m=0.90 (context only)
+target_height_m=1.78
+look=Hospitaller man-at-arms: mail hauberk+coif, dusty linen surcoat with cloth cross, spear, travel kit, dull iron

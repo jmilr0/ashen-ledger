@@ -1,0 +1,9 @@
+height_m=1.7200
+width_x_m=0.5362
+depth_y_m=0.4764
+tris=12798
+objects=Guide_Belt,Guide_Cloak,Guide_Head,Guide_Hood,Guide_Knife,Guide_Limbs,Guide_Satchel,Guide_Staff,Guide_Tunic
+capsule_diameter_m=0.60
+formation_spacing_m=0.90 (context only)
+target_height_m=1.72
+look=Draille guide: lean build, green-grey travel cloak+hood, satchel, staff, belt knife

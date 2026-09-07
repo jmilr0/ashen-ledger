@@ -1,4 +1,5 @@
 import {
+  ACT3_START,
   CORBIERES_START,
   createDefaultInventory,
   createDefaultParty,
@@ -304,10 +305,29 @@ export class Game {
       if (this.flags.ferry_done) this.world.hideNpc('ferry', true);
       const act1Done = !!this.flags.act1_complete || !!this.flags.narbonne_outcome;
       this.world.hideNpc('corbieres_road', !act1Done);
+      const act3Open = !!this.flags.talked_serena && !this.flags.act3_done;
+      this.world.hideNpc('act3_gate', !act3Open);
       return;
     }
     if (this.mapZone === 'corbieres') {
       if (this.flags.hold_door_done) this.world.hideNpc('hold_door', true);
+      const act3Open = !!this.flags.talked_serena && !this.flags.act3_done;
+      this.world.hideNpc('act3_road', !act3Open);
+      return;
+    }
+    if (this.mapZone === 'act3_close') {
+      const beat = String(this.flags.act3_beat || 'river');
+      const named = !!this.flags.lord_name_known && !!this.flags.lord_name;
+      const showLeper = beat === 'leper' || !!this.flags.talked_leper || beat === 'lord' || beat === 'splinter' || beat === 'close';
+      const showLordPath = beat === 'lord' || beat === 'splinter' || beat === 'close' || !!this.flags.lord_fate;
+      const showSplinter =
+        beat === 'splinter' || beat === 'close' || !!this.flags.lord_fate || beat === 'splinter';
+      this.world.hideNpc('leper', beat === 'river');
+      this.world.hideNpc('lord', !(showLordPath && named));
+      this.world.hideNpc('lord_empty', !(showLordPath && !named));
+      this.world.hideNpc('splinter', !(beat === 'splinter' || beat === 'close' || !!this.flags.lord_fate));
+      // river_watch always available until act3_done
+      this.world.hideNpc('river_watch', !!this.flags.act3_done);
     }
   }
 
@@ -316,7 +336,12 @@ export class Game {
     hud.id = 'hud';
     const carrier = this.flags.chest_carrier || '—';
     const trust = this.flags.pilgrim_trust;
-    const zoneLabel = this.mapZone === 'corbieres' ? 'Corbières stub' : 'Act I road';
+    const zoneLabel =
+      this.mapZone === 'corbieres'
+        ? 'Corbières priory'
+        : this.mapZone === 'act3_close'
+          ? 'Act III close'
+          : 'Fontfroide–Narbonne road';
     hud.innerHTML = `
       <div class="topbar">
         <button class="btn" id="hud-party">Party (C)</button>
@@ -489,6 +514,72 @@ export class Game {
       this.startDialogue('road_back_narbonne');
       return;
     }
+    if (n.id === 'act3_road' || n.id === 'act3_gate') {
+      if (!this.flags.talked_serena) {
+        this.toast('Speak Na Serena after Hugues — then the river watch.');
+        return;
+      }
+      if (this.flags.act3_done) {
+        this.toast('Campaign frame already closed.');
+        return;
+      }
+      this.startDialogue('act3_gate');
+      return;
+    }
+    if (n.id === 'river_watch') {
+      this.startDialogue('river_watch');
+      return;
+    }
+    if (n.id === 'leper') {
+      const beat = String(this.flags.act3_beat || '');
+      if (beat === 'river') {
+        this.toast('Speak the willow watch first — or take the infirmary from there.');
+        return;
+      }
+      this.startDialogue('leper_house');
+      return;
+    }
+    if (n.id === 'lord' || n.id === 'lord_empty') {
+      const beat = String(this.flags.act3_beat || '');
+      const allow =
+        beat === 'lord' ||
+        beat === 'splinter' ||
+        beat === 'close' ||
+        !!this.flags.lord_fate;
+      if (!allow) {
+        this.toast('River watch / leper first — or push for the hill house from the willows.');
+        return;
+      }
+      const named = !!this.flags.lord_name_known && !!this.flags.lord_name;
+      if (n.id === 'lord' && !named) {
+        this.toast('No name — try the empty hill house.');
+        return;
+      }
+      if (n.id === 'lord_empty' && named && !this.flags.lord_fate) {
+        this.startDialogue('lord_raimon');
+        return;
+      }
+      if (named) this.startDialogue('lord_raimon');
+      else this.startDialogue('lord_rumor');
+      return;
+    }
+    if (n.id === 'splinter') {
+      const beat = String(this.flags.act3_beat || '');
+      if (!this.flags.lord_fate && beat !== 'splinter') {
+        this.toast('Settle the hill house (or empty rumor) before the wood — or skip roofs at the willows.');
+        return;
+      }
+      this.startDialogue('splinter_judgment');
+      return;
+    }
+    if (n.id === 'road_corbieres') {
+      this.startDialogue('road_to_corbieres_from_act3');
+      return;
+    }
+    if (n.id === 'road_narbonne') {
+      this.startDialogue('road_to_narbonne_from_act3');
+      return;
+    }
     if (n.id === 'mairia' && !this.flags.chest_carrier) {
       this.toast('Take the chest from the cellarer first.');
       return;
@@ -514,8 +605,14 @@ export class Game {
     if (id === 'berna' && this.flags.talked_berna) startId = 'after';
     if (id === 'hugues' && this.flags.talked_hugues) startId = 'after';
     if (id === 'serena' && this.flags.talked_serena) startId = 'after';
+    if (id === 'leper_house' && this.flags.talked_leper) startId = 'after';
+    if ((id === 'lord_raimon' || id === 'lord_rumor') && this.flags.lord_fate) startId = 'after';
+    else if (id === 'lord_rumor' && this.flags.hint_lord_road && !this.flags.lord_fate) startId = 'hinted';
+    if (id === 'splinter_judgment' && this.flags.act3_done) startId = 'after';
+    else if (id === 'splinter_judgment' && this.flags.splinter_end) startId = 'close';
     this.dialogueNode = tree.find((n) => n.id === startId) ?? tree[0];
     this.dialogueNode = this.maybeAutoPilgrimClose(this.dialogueNode);
+    this.dialogueNode = this.maybeAct3Variants(this.dialogueNode, id);
     this.screen = 'dialogue';
     this.drawDialogue();
   }
@@ -572,6 +669,42 @@ export class Game {
     if (!effect || effect === 'end') this.closeDialogue();
   }
 
+  private maybeAct3Variants(node: DialogueNode | null, id: string): DialogueNode | null {
+    if (!node) return node;
+    if (id === 'leper_house' && node.id === 'start') {
+      let text = node.text;
+      if (this.flags.party_is_forger || !this.flags.seal_intact) {
+        text =
+          'You smell of broken wax. Sleep anyway — sickness doesn’t read seals. Bells don’t ring here either. The Surgeon works; the rest keep quiet.';
+      }
+      const choices = [...(node.choices ?? [])];
+      if (this.flags.child_burial === 'helped' && !choices.some((c) => c.next === 'work' && c.text.includes('buried'))) {
+        choices.splice(1, 0, {
+          text: 'We buried a child without bells already.',
+          next: 'work',
+        });
+      }
+      return { ...node, text, choices };
+    }
+    if (id === 'splinter_judgment' && node.id === 'start') {
+      const deal = String(this.flags.captain_deal || 'none');
+      const trust = Number(this.flags.pilgrim_trust) || 0;
+      let text = node.text;
+      if (deal === 'vines_seized') {
+        text =
+          'Hugues already counts vines. The wood’s the last magazine left in our bag. Altar, pine in the square, quiet snap, or keep it.';
+      } else if (trust <= 0) {
+        text =
+          'No column left to shock. Break it for the empty road, or don’t. Altar, pine, quiet snap, or bag.';
+      } else if (this.flags.party_is_forger || !this.flags.seal_intact) {
+        text =
+          'We’re already peekers. Keeping the wood makes us the next chest. Altar, public break, quiet snap, or keep walking with it.';
+      }
+      return { ...node, text };
+    }
+    return node;
+  }
+
   private maybeAutoPilgrimClose(node: DialogueNode | null): DialogueNode | null {
     if (!node || this.dialogueNpc !== 'narbonne_agent' || node.id !== 'pilgrims') return node;
     const trust = Number(this.flags.pilgrim_trust) || 0;
@@ -595,7 +728,10 @@ export class Game {
 
   private adjustTrust(delta: number): void {
     const cur = Number(this.flags.pilgrim_trust) || 0;
-    this.flags.pilgrim_trust = Math.max(0, Math.min(3, cur + delta));
+    const next = Math.max(0, Math.min(3, cur + delta));
+    this.flags.pilgrim_trust = next;
+    if (next >= 3 && cur < 3) this.barkOnce('pilgrim_trust_3', "Catalana: Column's eating our mud like friends.");
+    if (next <= 0 && cur > 0) this.barkOnce('pilgrim_trust_0', "Don't look back for our smoke.");
   }
 
   private addItemOnce(item: Item): void {
@@ -866,6 +1002,7 @@ export class Game {
       if (path === 'steal') {
         this.storyBeat = 'Chest taken quiet. Get out the sheep-gate before the loft notices.';
         this.flags.smoke_loft = true;
+        this.barkOnce('smoke_loft', "Catalana: Loft's coughing. Bolt's mine if you clear the angle.");
       } else if (path === 'hold_door') {
         this.storyBeat = 'Nave door held. Column / locals through the sheep-gate — then the loft.';
       } else {
@@ -943,7 +1080,10 @@ export class Game {
         qty: 1,
       });
       this.barkOnce('learn_lord_name', 'Arnau: Raimon of Quéribus. Write it once. Burn the scrap.');
-      this.storyBeat = 'Name seeded: Raimon of Quéribus. Act III still ahead.';
+      if (!this.flags.act3_beat) this.flags.act3_beat = 'river';
+      this.storyBeat =
+        'Act III. Names, then the splinter — altar or pine in the square.';
+      this.applyNpcVisibility();
       this.refreshObjective();
       this.persist();
       return 'close';
@@ -953,7 +1093,196 @@ export class Game {
       this.flags.lord_name_known = false;
       this.flags.talked_serena = true;
       this.barkOnce('lord_name_withheld', 'Elias: A roof later may cost more than a name now.');
-      this.storyBeat = 'Name withheld. A roof may open in Act III — splinter still waits.';
+      if (!this.flags.act3_beat) this.flags.act3_beat = 'river';
+      this.storyBeat =
+        'Act III. Names, then the splinter — altar or pine in the square.';
+      this.applyNpcVisibility();
+      this.refreshObjective();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'enter_act3') {
+      if (!this.flags.talked_serena) {
+        this.toast('Speak Na Serena after Hugues first.');
+        if (this.dialogueNpc === 'road_back_narbonne') {
+          this.dialogueNode = this.dialogueTree.find((n) => n.id === 'gate_act3') ?? this.dialogueNode;
+          this.drawDialogue();
+          return 'stay';
+        }
+        return 'close';
+      }
+      this.mapZone = 'act3_close';
+      this.flags.map_zone = 'act3_close';
+      if (!this.flags.act3_beat) this.flags.act3_beat = 'river';
+      this.storyBeat = 'Act III. Names, then the splinter — altar or pine in the square.';
+      this.toast('Act III close — willows, leper, lord, splinter.');
+      this.applyNpcVisibility();
+      this.persist();
+      this.closeDialogue();
+      void this.enterHub(ACT3_START.x, ACT3_START.z);
+      return 'stay';
+    }
+
+    if (effect === 'act3_to_leper') {
+      this.flags.act3_beat = 'leper';
+      this.storyBeat = 'Infirmary roof. Boil linen — or move before dawn.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      return 'continue';
+    }
+    if (effect === 'act3_to_lord') {
+      this.flags.act3_beat = 'lord';
+      this.storyBeat = 'Hill house next — hide, hang, or empty rumor.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      return 'continue';
+    }
+    if (effect === 'act3_to_splinter') {
+      this.flags.act3_beat = 'splinter';
+      this.flags.lord_fate = this.flags.lord_fate || 'unnamed_fled';
+      this.storyBeat = 'Straight to the wood’s end. Altar, pine, or bag.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'hint_lord_road') {
+      this.flags.hint_lord_road = true;
+      this.barkOnce('hint_lord_road', 'Catalana: Hill grit. He’s ahead, not waiting.');
+      return 'continue';
+    }
+
+    if (effect === 'rest_leper') {
+      this.flags.talked_leper = true;
+      for (const m of this.party) {
+        if (m.outForAct || m.stats.hp <= 0) continue;
+        m.bleeding = false;
+        m.bleedTicks = 0;
+        if (m.stats.hp < m.stats.maxHp) {
+          m.stats.hp = Math.min(m.stats.maxHp, m.stats.hp + 4);
+        }
+      }
+      this.barkOnce('rest_leper', 'Elias: Dawn linen. No captains at the door.');
+      this.refreshPartyStrip();
+      return 'continue';
+    }
+
+    if (effect === 'skip_leper') {
+      this.flags.talked_leper = true;
+      this.flags.act3_beat = 'lord';
+      this.barkOnce('skip_leper', 'Elias: Then the bleeds stay. Don’t ask me for miracles on the march.');
+      this.storyBeat = 'Leper roof skipped. Hill house — or the wood.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'end_leper_to_lord') {
+      this.flags.talked_leper = true;
+      this.flags.act3_beat = 'lord';
+      this.storyBeat = 'Lord settled next — then decide the wood.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      this.persist();
+      return 'close';
+    }
+
+    if (effect === 'end_leper_to_splinter') {
+      this.flags.talked_leper = true;
+      this.flags.act3_beat = 'splinter';
+      this.flags.lord_fate = this.flags.lord_fate || 'unnamed_fled';
+      this.storyBeat = 'Enough roofs. Decide the wood before the road closes.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      this.persist();
+      return 'close';
+    }
+
+    if (
+      effect === 'lord_hidden' ||
+      effect === 'lord_hidden_grain' ||
+      effect === 'lord_named_hanged' ||
+      effect === 'lord_unnamed_fled'
+    ) {
+      const fate =
+        effect === 'lord_named_hanged'
+          ? 'named_hanged'
+          : effect === 'lord_unnamed_fled'
+            ? 'unnamed_fled'
+            : 'hidden';
+      this.flags.lord_fate = fate;
+      this.flags.act3_beat = 'splinter';
+      if (effect === 'lord_hidden_grain') {
+        this.addItemOnce({
+          id: 'hill_grain',
+          name: 'Hill grain',
+          description: 'Silence bought in sacks. Column eats; Raimon stays unnamed by you.',
+          qty: 1,
+        });
+      }
+      if (fate === 'hidden') this.barkOnce('lord_hidden', 'Guillem: We owe a silence. Keep it.');
+      if (fate === 'named_hanged')
+        this.barkOnce('lord_named_hanged', 'Catalana: Hill house will empty. Don’t sleep there.');
+      if (fate === 'unnamed_fled') this.toast('Hill house empty — or left alone. Splinter next.');
+      this.storyBeat = 'Lord settled. Decide the wood before the road closes.';
+      this.refreshObjective();
+      this.applyNpcVisibility();
+      this.persist();
+      return 'close';
+    }
+
+    if (
+      effect === 'splinter_altar' ||
+      effect === 'splinter_broken_public' ||
+      effect === 'splinter_broken_quiet' ||
+      effect === 'splinter_kept_bag'
+    ) {
+      const end =
+        effect === 'splinter_altar'
+          ? 'altar'
+          : effect === 'splinter_kept_bag'
+            ? 'kept_bag'
+            : 'broken_public';
+      this.flags.splinter_end = end;
+      this.flags.act3_beat = 'close';
+      if (end === 'altar') {
+        this.barkOnce('splinter_altar', 'Arnau: Quiet stone. Someone else can kneel without our bag.');
+        this.inventory = this.inventory.filter((i) => i.id !== 'splinter');
+      } else if (effect === 'splinter_broken_quiet') {
+        this.barkOnce('break_quiet', 'Peire: No crowd. Just pine.');
+        this.inventory = this.inventory.filter((i) => i.id !== 'splinter');
+      } else if (end === 'broken_public') {
+        this.barkOnce('splinter_broken_public', 'Peire: Pine sounds like pine. Good.');
+        this.inventory = this.inventory.filter((i) => i.id !== 'splinter');
+      } else {
+        this.barkOnce('splinter_kept_bag', 'Guillem: Then we stay the next chest. Formation.');
+      }
+      // lord + splinter toast pairs
+      if (this.flags.lord_fate === 'hidden' && end === 'broken_public') {
+        this.toast('Raimon still safe — market never saw the show.');
+      }
+      if (this.flags.lord_fate === 'hidden' && end === 'kept_bag') {
+        this.toast('Hill silence and a bagged relic. Someone will notice.');
+      }
+      return 'continue';
+    }
+
+    if (effect === 'end_act3') {
+      this.flags.act3_done = true;
+      this.flags.act3_beat = 'close';
+      const end = String(this.flags.splinter_end || 'altar');
+      if (end === 'broken_public') {
+        this.storyBeat = 'Pine in the square. Crowds will remember the sound. The war goes on.';
+      } else if (end === 'kept_bag') {
+        this.storyBeat = 'Wood still in the bag. So does the risk. The war goes on.';
+      } else {
+        this.storyBeat = 'Splinter quiet on stone. Forgery named where it would take. The war goes on.';
+      }
+      this.barkOnce('end_act3', "Guillem: War's still moving. We walk.");
+      this.toast('Campaign frame closed — war continues.');
       this.refreshObjective();
       this.persist();
       return 'close';

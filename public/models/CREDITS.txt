@@ -14,4 +14,10 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   hugues_pavilion (tools/make_hugues_pavilion.py) — northern captain field tent, guy ropes, dull banner;
   mile_marker (tools/make_mile_marker.py) — worn limestone league stone, Fontfroide–Narbonne road;
   mold_cavity (tools/make_mold_cavity.py) — lifted floorboards + lead seal die hidey-hole (goldsmith).
+  cloister_arcade (tools/make_cloister_arcade.py) — Fontfroide Cistercian cloister bay, limestone + gravel;
+  cloister_well (tools/make_cloister_well.py) — cloister yard well/lavabo, iron crank, mud splash;
+  leper_rest (tools/make_leper_rest.py) — Act III leper-house Rest cot, linen, basin, willow sprig.
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
+
+Art path hooks (optional drops): mile_marker.glb, mold_cavity.glb under props/;
+narbonne_agent.glb (or narbonne_courier.glb / hooded_courier.glb) under characters/.

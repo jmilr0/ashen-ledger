@@ -57,6 +57,9 @@ const PATH = {
   mileMarker: './models/props/mile_marker.glb',
   moldCavity: './models/props/mold_cavity.glb',
   narbonneAgent: './models/characters/narbonne_agent.glb',
+  // Upcoming Art aliases (non-blocking) — prefer agent, then courier names
+  narbonneCourier: './models/characters/narbonne_courier.glb',
+  hoodedCourier: './models/characters/hooded_courier.glb',
   bernaNpc: './models/characters/brin.glb',
   huguesNpc: './models/characters/rowan.glb',
   serenaNpc: './models/characters/mirelle.glb',
@@ -98,11 +101,11 @@ export class World {
   constructor(canvas: HTMLCanvasElement, zone: MapZone = 'act1_road') {
     this.zone = zone;
     this.activeNpcs = npcsForZone(zone);
-    // Winter day — cold, muted, no gothic magic glow
-    const bg = zone === 'corbieres' ? 0x5a6068 : zone === 'act3_close' ? 0x586068 : 0x6a7078;
-    const fog = zone === 'corbieres' ? 0x7a8088 : zone === 'act3_close' ? 0x788088 : 0x8a9098;
+    // Winter dirt — overcast cold, muted haze (readable for orbit cam)
+    const bg = zone === 'corbieres' ? 0x4e545c : zone === 'act3_close' ? 0x4c525a : 0x585e66;
+    const fog = zone === 'corbieres' ? 0x6e747c : zone === 'act3_close' ? 0x6c727a : 0x7a8088;
     this.scene.background = new THREE.Color(bg);
-    this.scene.fog = new THREE.FogExp2(fog, zone === 'act1_road' ? 0.028 : 0.032);
+    this.scene.fog = new THREE.FogExp2(fog, zone === 'act1_road' ? 0.034 : 0.038);
 
     const aspect = window.innerWidth / window.innerHeight;
     const frustum = this.frustumSize;
@@ -122,7 +125,7 @@ export class World {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 0.82;
 
     this.setupLights();
     if (zone === 'corbieres') this.buildCorbieresHub();
@@ -217,14 +220,15 @@ export class World {
   }
 
   private setupLights(): void {
-    const ambient = new THREE.AmbientLight(0x9aa0a8, 0.42);
+    // Cool overcast fill — less default Three.js bright, still orbit-readable
+    const ambient = new THREE.AmbientLight(0x8a929a, 0.38);
     this.scene.add(ambient);
 
-    const hemi = new THREE.HemisphereLight(0xc8d0d8, 0x4a4038, 0.65);
+    const hemi = new THREE.HemisphereLight(0xb8c4d0, 0x3a342c, 0.72);
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xe8e4d8, 0.7);
-    sun.position.set(6, 18, 4);
+    const sun = new THREE.DirectionalLight(0xd0d4d8, 0.48);
+    sun.position.set(4, 22, 3);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.camera.near = 1;
@@ -238,13 +242,17 @@ export class World {
     sun.shadow.normalBias = 0.02;
     this.scene.add(sun);
 
-    const cool = new THREE.DirectionalLight(0xb0c0d0, 0.25);
-    cool.position.set(-5, 6, -6);
+    const cool = new THREE.DirectionalLight(0x9eb0c4, 0.32);
+    cool.position.set(-6, 8, -5);
     this.scene.add(cool);
+
+    const rim = new THREE.DirectionalLight(0xa8b0b8, 0.12);
+    rim.position.set(2, 4, 8);
+    this.scene.add(rim);
   }
 
   private addLanternLight(x: number, y: number, z: number, intensity = 0.55): void {
-    const light = new THREE.PointLight(0xffc080, intensity, 6, 2);
+    const light = new THREE.PointLight(0xe8c090, intensity * 0.85, 5.5, 2);
     light.position.set(x, y, z);
     light.castShadow = false;
     this.scene.add(light);
@@ -316,9 +324,9 @@ export class World {
   /** Fontfroide road: dirt track, ditch, abbey wall stubs, alley posts. */
   private buildBaseHub(): void {
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x5a5044,
-      roughness: 0.95,
-      metalness: 0.02,
+      color: 0x4a443a,
+      roughness: 0.98,
+      metalness: 0.01,
     });
     const geo = new THREE.PlaneGeometry(GRID * TILE, GRID * TILE);
     geo.rotateX(-Math.PI / 2);
@@ -330,7 +338,7 @@ export class World {
     // Muddy road strip (walkable)
     const road = new THREE.Mesh(
       new THREE.BoxGeometry(2.4, 0.04, GRID * TILE),
-      new THREE.MeshStandardMaterial({ color: 0x4a4034, roughness: 0.98 })
+      new THREE.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.99 })
     );
     road.position.set(0.2, 0.02, 0);
     road.receiveShadow = true;
@@ -391,6 +399,15 @@ export class World {
     this.addBoxCollider(2.4 * TILE, -4 * TILE, 0.28, 0.28);
     this.addBoxCollider(4.0 * TILE, -4 * TILE, 0.28, 0.28);
 
+    // Winter roadside clutter — keep road strip clear
+    this.scatterSimpleRocks([
+      [-4.8, 1.8, 0.55, 0.35],
+      [4.6, -0.8, 0.7, 0.4],
+      [-1.8, 4.6, 0.5, 0.28],
+      [4.2, 4.0, 0.6, 0.32],
+      [-5.2, -4.8, 0.65, 0.38],
+    ]);
+
     // Label: coordinate / art placeholder
     const labelCanvas = document.createElement('canvas');
     labelCanvas.width = 512;
@@ -421,9 +438,9 @@ export class World {
   /** Act II scaffold — Corbières priory road (placeholder geometry). */
   private buildCorbieresHub(): void {
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x4a4840,
-      roughness: 0.96,
-      metalness: 0.02,
+      color: 0x3e4038,
+      roughness: 0.98,
+      metalness: 0.01,
     });
     const geo = new THREE.PlaneGeometry(GRID * TILE, GRID * TILE);
     geo.rotateX(-Math.PI / 2);
@@ -434,7 +451,7 @@ export class World {
 
     const road = new THREE.Mesh(
       new THREE.BoxGeometry(1.8, 0.04, GRID * TILE),
-      new THREE.MeshStandardMaterial({ color: 0x3a3830, roughness: 0.98 })
+      new THREE.MeshStandardMaterial({ color: 0x322e28, roughness: 0.99 })
     );
     road.position.set(0, 0.02, 0);
     road.receiveShadow = true;
@@ -448,6 +465,10 @@ export class World {
       [3.8, 2.8, 1.5, 1.3],
       [-1.8, -4.2, 2.2, 1.8],
       [1.8, -4.0, 2.0, 1.7],
+      [-4.6, 0.6, 1.1, 0.9],
+      [4.5, 0.8, 1.2, 1.0],
+      [-2.8, 4.4, 1.0, 0.8],
+      [2.6, 4.2, 1.1, 0.85],
     ];
     for (const [gx, gz, w, h] of rocks) {
       const b = new THREE.Mesh(
@@ -463,6 +484,13 @@ export class World {
       this.scene.add(b);
       this.addBoxCollider(px, pz, w * 0.45, w * 0.8 * 0.45);
     }
+
+    this.scatterSimpleRocks([
+      [-5.2, -3.6, 0.45, 0.25],
+      [5.0, -3.4, 0.5, 0.28],
+      [-5.0, 2.2, 0.4, 0.22],
+      [5.1, 3.0, 0.48, 0.26],
+    ]);
 
     const labelCanvas = document.createElement('canvas');
     labelCanvas.width = 560;
@@ -492,9 +520,9 @@ export class World {
 
   private buildAct3Hub(): void {
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x5a5850,
-      roughness: 0.95,
-      metalness: 0.02,
+      color: 0x484640,
+      roughness: 0.98,
+      metalness: 0.01,
     });
     this.ground = new THREE.Mesh(new THREE.PlaneGeometry(GRID * TILE * 1.4, GRID * TILE * 1.4), groundMat);
     this.ground.rotation.x = -Math.PI / 2;
@@ -539,6 +567,41 @@ export class World {
     this.scene.add(altar);
     this.addBoxCollider(0.2 * TILE, -3.8 * TILE, 0.55, 0.45);
 
+    // Edge clutter — leave center square + approaches clear
+    this.scatterSimpleRocks([
+      [-4.0, 2.8, 0.55, 0.3],
+      [4.2, 2.4, 0.6, 0.32],
+      [-4.4, -3.2, 0.5, 0.28],
+      [4.0, -3.6, 0.55, 0.3],
+      [-3.2, 4.2, 0.7, 0.35],
+      [3.4, 4.0, 0.65, 0.34],
+    ]);
+    const stump = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.35, 0.35, 8),
+      new THREE.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.95 })
+    );
+    stump.position.set(-3.6 * TILE, 0.18, 0.8 * TILE);
+    stump.castShadow = true;
+    stump.name = 'env-stump';
+    this.scene.add(stump);
+    this.addCircleCollider(-3.6 * TILE, 0.8 * TILE, 0.3);
+    const fencePost = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 1.1, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x3a3830, roughness: 0.92 })
+    );
+    for (const [gx, gz] of [
+      [3.8, -0.4],
+      [3.8, 0.4],
+      [3.8, 1.2],
+    ] as const) {
+      const p = fencePost.clone();
+      p.position.set(gx * TILE, 0.55, gz * TILE);
+      p.castShadow = true;
+      p.name = 'env-fence-post';
+      this.scene.add(p);
+      this.addCircleCollider(gx * TILE, gz * TILE, 0.14);
+    }
+
     const labelCanvas = document.createElement('canvas');
     labelCanvas.width = 520;
     labelCanvas.height = 64;
@@ -563,6 +626,41 @@ export class World {
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.16;
     this.scene.add(grid);
+  }
+
+  /** After polish collider wipe — restore env rock/stump/post blockers. */
+  private rebindEnvPropColliders(): void {
+    this.scene.traverse((o) => {
+      if (o.name === 'env-rock') {
+        this.addCircleCollider(o.position.x, o.position.z, 0.28);
+      } else if (o.name === 'env-stump') {
+        this.addCircleCollider(o.position.x, o.position.z, 0.3);
+      } else if (o.name === 'env-fence-post') {
+        this.addCircleCollider(o.position.x, o.position.z, 0.14);
+      }
+    });
+  }
+
+  /** Low rocks / mud clumps at map edges — colliders small, road kept clear. */
+  private scatterSimpleRocks(spots: Array<[number, number, number, number]>): void {
+    for (const [gx, gz, w, h] of spots) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x4a4640,
+        roughness: 0.96,
+        metalness: 0.02,
+      });
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(w * 0.55, 0), mat);
+      const px = gx * TILE * 0.9;
+      const pz = gz * TILE * 0.9;
+      rock.position.set(px, h * 0.35, pz);
+      rock.scale.set(1, 0.55 + h * 0.35, 0.85);
+      rock.rotation.set(0.2, gx + gz, 0.15);
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      rock.name = 'env-rock';
+      this.scene.add(rock);
+      this.addCircleCollider(px, pz, Math.max(0.22, w * 0.35));
+    }
   }
 
   private makeDoorPlaceholder(color: number): THREE.Group {
@@ -654,6 +752,7 @@ export class World {
     if (this.zone === 'corbieres' || this.zone === 'act3_close') {
       // Stub maps — keep box geometry; optional priory kit / NPC GLBs when Art ships them.
       await this.tryHookPrioryKit();
+      await this.tryScatterZoneDressing();
       this.updateCamera();
       return;
     }
@@ -702,7 +801,11 @@ export class World {
     if (ferryArt) {
       await this.upgradeNpc('ferry', ferryArt, 1.4, 0x4a4030, 0.15);
     }
-    const narbonneArt = await loadModel(PATH.narbonneAgent);
+    // Prefer shipped agent; fall back to upcoming courier Art names
+    const narbonneArt =
+      (await loadModel(PATH.narbonneAgent)) ??
+      (await loadModel(PATH.narbonneCourier)) ??
+      (await loadModel(PATH.hoodedCourier));
     if (narbonneArt) {
       await this.upgradeNpc('narbonne', narbonneArt, 1.72, 0x3a4858, 0.12);
     }
@@ -720,6 +823,7 @@ export class World {
 
     // Parish porch + burial gate (Art drops) — after collider reset
     await this.tryHookParishProps();
+    this.rebindEnvPropColliders();
 
     this.removeNamed('temp-building');
     this.removeNamed('temp-arch');
@@ -836,6 +940,32 @@ export class World {
       fitToHeight(pine2, 2.1);
       this.scene.add(pine2);
       this.addCircleCollider(5.5, 4.8, 0.35);
+      // Extra barren trees at corners — densify without blocking road
+      for (const [x, z, h] of [
+        [-5.2, 5.0, 2.0],
+        [5.4, -4.6, 1.9],
+        [-4.8, -1.2, 1.7],
+      ] as const) {
+        const t = pine.clone(true);
+        fitToHeight(t, h);
+        t.position.set(x, 0, z);
+        this.scene.add(t);
+        this.addCircleCollider(x, z, 0.32);
+      }
+    }
+
+    // Extra fence runs along east scrub (leave alley between pillars open)
+    if (fence) {
+      const fence3 = fence.clone(true);
+      fence3.position.set(5.2 * TILE, 0, -2.2 * TILE);
+      fence3.rotation.y = Math.PI / 2;
+      this.scene.add(fence3);
+      this.addBoxCollider(5.2 * TILE, -2.2 * TILE, 0.12, 0.7);
+      const fence4 = fence.clone(true);
+      fence4.position.set(5.2 * TILE, 0, 0.6 * TILE);
+      fence4.rotation.y = Math.PI / 2;
+      this.scene.add(fence4);
+      this.addBoxCollider(5.2 * TILE, 0.6 * TILE, 0.12, 0.7);
     }
 
     this.updateCamera();
@@ -918,6 +1048,82 @@ export class World {
     this.scene.add(this.playerMesh);
   }
 
+
+  /** Non-blocking: barren trees / fences for stub zones (GLB when present). */
+  private async tryScatterZoneDressing(): Promise<void> {
+    const pine = await loadModel(PATH.pine);
+    const fence = await loadModel(PATH.fence);
+    if (this.zone === 'corbieres') {
+      if (pine) {
+        for (const [x, z, h] of [
+          [-5.4, -4.6, 2.2],
+          [5.3, -4.4, 2.0],
+          [-5.5, 4.6, 1.9],
+          [5.4, 4.5, 2.1],
+          [-5.6, 1.0, 1.7],
+        ] as const) {
+          const t = pine.clone(true);
+          fitToHeight(t, h);
+          tintMeshes(t, 0x3a4038, 0.2);
+          t.position.set(x, 0, z);
+          t.name = 'env-pine';
+          this.scene.add(t);
+          this.addCircleCollider(x, z, 0.32);
+        }
+      }
+      if (fence) {
+        fitToHeight(fence, 1.0);
+        tintMeshes(fence, 0x3a3830, 0.3);
+        for (const [x, z, rot] of [
+          [-4.8, 5.0, 0],
+          [-2.6, 5.0, 0],
+          [2.8, 5.0, 0],
+          [5.0, -1.0, Math.PI / 2],
+        ] as const) {
+          const f = fence.clone(true);
+          f.position.set(x, 0, z);
+          f.rotation.y = rot;
+          f.name = 'env-fence';
+          this.scene.add(f);
+          this.addBoxCollider(x, z, rot === 0 ? 0.7 : 0.12, rot === 0 ? 0.12 : 0.7);
+        }
+      }
+    }
+    if (this.zone === 'act3_close') {
+      if (pine) {
+        for (const [x, z, h] of [
+          [-5.2, -4.2, 2.0],
+          [5.1, -4.0, 1.85],
+          [-5.0, 4.6, 1.9],
+          [5.2, 4.4, 2.05],
+        ] as const) {
+          const t = pine.clone(true);
+          fitToHeight(t, h);
+          tintMeshes(t, 0x3a4038, 0.22);
+          t.position.set(x, 0, z);
+          t.name = 'env-pine';
+          this.scene.add(t);
+          this.addCircleCollider(x, z, 0.32);
+        }
+      }
+      if (fence) {
+        fitToHeight(fence, 1.0);
+        tintMeshes(fence, 0x3a3830, 0.3);
+        for (const [x, z, rot] of [
+          [-4.6, -4.8, 0],
+          [-2.4, -4.8, 0],
+          [4.8, 1.6, Math.PI / 2],
+        ] as const) {
+          const f = fence.clone(true);
+          f.position.set(x, 0, z);
+          f.rotation.y = rot;
+          f.name = 'env-fence';
+          this.scene.add(f);
+          this.addBoxCollider(x, z, rot === 0 ? 0.7 : 0.12, rot === 0 ? 0.12 : 0.7);
+        }
+      }
+    }
+  }
 
   /** Non-blocking: parish porch / burial gate props when Art ships them. */
   private async tryHookParishProps(): Promise<void> {

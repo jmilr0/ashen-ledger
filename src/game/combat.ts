@@ -215,7 +215,7 @@ export class CombatSession {
         const boltOk = flankOk && this.living('enemies').length > 0;
         if (!flankOk && !this.guideBoltHintShown) {
           this.guideBoltHintShown = true;
-          this.log.push('no loft angle yet');
+          this.log.push(`${a.name} has no loft angle yet.`);
         }
         return [
           { id: 'bolt', label: 'Bolt', enabled: boltOk },
@@ -237,12 +237,13 @@ export class CombatSession {
             enabled: this.sealIntact && !this.sealShownThisFight,
           },
         ];
-      case 'surgeon':
+      case 'surgeon': {
+        const someoneBleeding = this.allies.some((x) => x.bleeding && !x.downed);
         return [
           {
             id: 'stabilize',
-            label: 'Stabilize',
-            // Always enabled so the turn can advance when nobody is bleeding (softlock fix).
+            // No-op when nobody bleeding: label Tend kit so the softlock fix doesn't look broken.
+            label: someoneBleeding ? 'Stabilize' : 'Tend kit',
             enabled: true,
           },
           {
@@ -251,6 +252,7 @@ export class CombatSession {
             enabled: this.allies.some((x) => x.downed || x.hp <= 0),
           },
         ];
+      }
     }
   }
 

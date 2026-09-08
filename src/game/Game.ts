@@ -215,6 +215,11 @@ export class Game {
           this.openNpc(npc);
           return;
         }
+        const job = this.world.pickFollower(ev.clientX, ev.clientY);
+        if (job) {
+          this.talkPartyCompanion(job);
+          return;
+        }
         this.orbitDragging = true;
         this.lastPointerX = ev.clientX;
         this.lastPointerY = ev.clientY;
@@ -481,6 +486,20 @@ export class Game {
         if (this.screen === 'hub') this.selectCompanion(id);
       });
     });
+  }
+
+  /** Chunk (2) stub: RMB party bark — Narrative thickens later. */
+  private talkPartyCompanion(id: JobId): void {
+    const m = this.party.find((p) => p.id === id);
+    if (!m || !m.recruited || m.outForAct || m.stats.hp <= 0) return;
+    const barks: Record<JobId, string> = {
+      guide: 'Catalana: Road’s still wet. I keep the column’s pace.',
+      sergeant: 'Guillem: Formation holds. Point me when iron’s up.',
+      convers: 'Peire: Latches and rope — say the word.',
+      clerk: 'Arnau: Wax stays closed. Ask when you need the letter.',
+      surgeon: 'Elias: Linen’s ready. Don’t open bleeds for sport.',
+    };
+    this.toast(barks[id] ?? `${m.name}: …`);
   }
 
   private tryInteract(): void {

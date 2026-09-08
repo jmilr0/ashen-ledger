@@ -5,7 +5,11 @@ import type { JobId, MapZone, NpcDef } from './types';
 import { SELECT_ORDER } from './types';
 
 const TILE = 1.2;
-const GRID = 11; // -5..5
+/** Act I outdoor half-extents in meters (docs/open-map-extents-act1.md): ~32×100 m. */
+const HALF_X = 16;
+const HALF_Z = 50;
+/** Legacy square stub maps (Corbières / Act III) until their outdoor docs land. */
+const GRID = 18; // ~21.6 m
 const PLAYER_RADIUS = 0.32;
 /** Formation trail center-to-center (~0.9 m). Soft-slide uses a leaner radius so doorways stay clear. */
 const FOLLOW_SPACING = 0.9;
@@ -20,7 +24,7 @@ const TURN_CAP_RAD = (540 * Math.PI) / 180;
 const FOLLOW_CHASE = 6;
 /** Follower yaw lag vs leader when nearly stopped (slight lag, not instant-copy). */
 const FOLLOW_YAW_LAG = 9;
-const ORBIT_DIST = 18;
+const ORBIT_DIST = 24;
 const ORBIT_PITCH_MIN = 0.35;
 const ORBIT_PITCH_MAX = 1.25;
 
@@ -96,6 +100,13 @@ const PATH = {
   prioryNaveShell: './models/props/priory_nave_shell.glb',
   roadHouseShell: './models/props/road_house_shell.glb',
   goldsmithShopShell: './models/props/goldsmith_shop_shell.glb',
+  // Open-map stockpile (Art) — |x|≥4 bands + hub pockets; null-ok
+  cloisterArcadeB: './models/props/cloister_arcade_b.glb',
+  ruinDebrisPile: './models/props/ruin_debris_pile.glb',
+  villageShed: './models/props/village_shed.glb',
+  oliveOrCypress: './models/props/olive_or_cypress.glb',
+  marketStall: './models/props/market_stall.glb',
+  leperBellPost: './models/props/leper_bell_post.glb',
   // Kenney extras for zone densify (already licensed in repo)
   borderPillar: './models/graveyard/border-pillar.glb',
   lanternCandle: './models/graveyard/lantern-candle.glb',
@@ -129,7 +140,7 @@ export class World {
   private camYaw = Math.PI / 4;
   private camPitch = 0.72;
   private camDist = ORBIT_DIST;
-  private frustumSize = 9;
+  private frustumSize = 14;
   playerX = 0;
   playerZ = 2;
   onArrive: (() => void) | null = null;
@@ -141,7 +152,7 @@ export class World {
     const bg = zone === 'corbieres' ? 0x4e545c : zone === 'act3_close' ? 0x4c525a : 0x585e66;
     const fog = zone === 'corbieres' ? 0x6e747c : zone === 'act3_close' ? 0x6c727a : 0x7a8088;
     this.scene.background = new THREE.Color(bg);
-    this.scene.fog = new THREE.FogExp2(fog, zone === 'act1_road' ? 0.034 : 0.038);
+    this.scene.fog = new THREE.FogExp2(fog, zone === 'act1_road' ? 0.014 : 0.036);
 
     const aspect = window.innerWidth / window.innerHeight;
     const frustum = this.frustumSize;
@@ -151,7 +162,7 @@ export class World {
       frustum,
       -frustum,
       0.1,
-      120
+      220
     );
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -202,7 +213,11 @@ export class World {
       g.userData.npcId = n.id;
       this.scene.add(g);
       this.npcMeshes.set(n.id, g);
-      this.addCircleCollider(n.x * TILE, n.z * TILE, n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.3);
+      this.addCircleCollider(
+        n.x * TILE,
+        n.z * TILE,
+        n.id === 'ferry' || n.id === 'priory_door' ? 0.55 : 0.3
+      );
     }
 
     // Follower capsules (Art owns final meshes — placeholders only)
@@ -358,117 +373,136 @@ export class World {
     return primary;
   }
 
-  /** Fontfroide road: dirt track, ditch, abbey wall stubs, alley posts. */
+  /** Fontfroide → Narbonne contiguous outdoor (~100 m N–S × ~32 m E–W). */
   private buildBaseHub(): void {
     const groundMat = new THREE.MeshStandardMaterial({
       color: 0x4a443a,
       roughness: 0.98,
       metalness: 0.01,
     });
-    const geo = new THREE.PlaneGeometry(GRID * TILE, GRID * TILE);
+    const geo = new THREE.PlaneGeometry(HALF_X * 2, HALF_Z * 2);
     geo.rotateX(-Math.PI / 2);
     this.ground = new THREE.Mesh(geo, groundMat);
     this.ground.receiveShadow = true;
     this.ground.name = 'ground';
     this.scene.add(this.ground);
 
-    // Muddy road strip (walkable)
+    // Road crown x ∈ [-1.2, 1.2] full Z — keep clear of heavy colliders
     const road = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 0.04, GRID * TILE),
+      new THREE.BoxGeometry(2.4, 0.04, HALF_Z * 2),
       new THREE.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.99 })
     );
-    road.position.set(0.2, 0.02, 0);
+    road.position.set(0, 0.02, 0);
     road.receiveShadow = true;
     road.name = 'road';
     this.scene.add(road);
 
-    // Ditch (soft barrier — drown-evidence flavor)
-    const ditch = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1, 0.08, GRID * TILE * 0.85),
-      new THREE.MeshStandardMaterial({
-        color: 0x3a4238,
-        roughness: 0.9,
-        metalness: 0.05,
-      })
-    );
-    ditch.position.set(-3.6, -0.02, 0);
-    ditch.receiveShadow = true;
-    ditch.name = 'ditch';
-    this.scene.add(ditch);
-    this.addAABB(-4.2, -3.0, -GRID * TILE * 0.45, -0.9);
-    this.addAABB(-4.2, -3.0, 0.9, GRID * TILE * 0.45);
+    // Soft ditch west of road (shoulders / dressing band) — gaps so hubs stay walkable
+    const ditchMat = new THREE.MeshStandardMaterial({
+      color: 0x3a4238,
+      roughness: 0.9,
+      metalness: 0.05,
+    });
+    for (const [z0, z1] of [
+      [-48, -38],
+      [-30, -18],
+      [-10, 2],
+      [10, 28],
+      [34, 46],
+    ] as Array<[number, number]>) {
+      const len = z1 - z0;
+      const ditch = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, len), ditchMat);
+      ditch.position.set(-3.4, -0.02, (z0 + z1) / 2);
+      ditch.receiveShadow = true;
+      ditch.name = 'ditch';
+      this.scene.add(ditch);
+      this.addAABB(-4.0, -2.8, z0 + 0.2, z1 - 0.2);
+    }
 
-    // Abbey wall stubs (west) — stone, muted
-    const places: Array<[number, number, number, number, number]> = [
-      [-5.0, -3.5, 1.8, 2.4, 0x6a6860],
-      [-5.0, 0.5, 1.6, 2.6, 0x5e5c54],
-      [-5.0, 4.0, 1.7, 2.2, 0x626058],
-      [5.0, -2.5, 1.5, 1.8, 0x5a5048],
-      [5.0, 2.5, 1.4, 1.6, 0x4a443c],
-      [1.5, 5.2, 2.0, 1.4, 0x585048],
+    // Hub shells |x| ≥ 4 (world meters) — Fontfroide / parish / goldsmith / Narbonne pockets
+    const places: Array<[number, number, number, number, number, string]> = [
+      // Fontfroide cloister west (−6, +38)
+      [-8.5, 40, 3.2, 2.8, 0x6a6860, 'temp-building-fontfroide'],
+      [-9.2, 36, 2.6, 2.4, 0x5e5c54, 'temp-building-fontfroide'],
+      [-7.0, 42, 2.2, 2.0, 0x626058, 'temp-building-fontfroide'],
+      // Mile marker shoulders
+      [5.5, 24, 1.6, 1.4, 0x5a5048, 'temp-building'],
+      [-5.8, 20, 1.5, 1.3, 0x4a443c, 'temp-building'],
+      // Ambush scrub
+      [5.2, 10, 1.4, 1.2, 0x585048, 'temp-building'],
+      [-5.5, 6, 1.5, 1.1, 0x4a4438, 'temp-building'],
+      // Parish east (+7, −2)
+      [9.5, -1.5, 3.0, 2.6, 0x5a5048, 'temp-building-parish'],
+      [10.2, -4.0, 2.2, 2.0, 0x4a443c, 'temp-building-parish'],
+      // Goldsmith west (−7, −14)
+      [-9.0, -13, 2.8, 2.4, 0x5a5848, 'temp-building-goldsmith'],
+      [-9.5, -16, 2.0, 1.8, 0x4a4840, 'temp-building-goldsmith'],
+      // Ferry approach scrub
+      [5.0, -28, 1.6, 1.2, 0x4a4438, 'temp-building'],
+      [-5.2, -30, 1.5, 1.1, 0x585048, 'temp-building'],
+      // Narbonne pocket (+5, −44)
+      [9.0, -44, 3.0, 2.5, 0x4a4850, 'temp-building-narbonne'],
+      [8.2, -41, 2.2, 2.0, 0x3a3838, 'temp-building-narbonne'],
+      [10.0, -47, 2.0, 1.8, 0x454038, 'temp-building-narbonne'],
+      // Corbières turnoff spur west
+      [-7.5, -28, 1.8, 1.4, 0x4a4030, 'temp-building'],
     ];
-    for (const [gx, gz, w, h, col] of places) {
+    for (const [wx, wz, w, h, col, name] of places) {
       const b = new THREE.Mesh(
         new THREE.BoxGeometry(w, h, w * 0.75),
         new THREE.MeshStandardMaterial({ color: col, roughness: 0.9 })
       );
-      const px = gx * TILE * 0.85;
-      const pz = gz * TILE * 0.85;
-      b.position.set(px, h / 2, pz);
+      b.position.set(wx, h / 2, wz);
       b.castShadow = true;
       b.receiveShadow = true;
-      b.name = 'temp-building';
+      b.name = name;
       this.scene.add(b);
-      this.addBoxCollider(px, pz, w * 0.5, w * 0.75 * 0.5);
+      this.addBoxCollider(wx, wz, w * 0.45, w * 0.75 * 0.45);
     }
 
-    // Alley stone posts (east) — formation fight framing
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x686860, roughness: 0.88 });
-    const postL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.0, 0.4), postMat);
-    const postR = postL.clone();
-    postL.position.set(2.4 * TILE, 1.0, -4 * TILE);
-    postR.position.set(4.0 * TILE, 1.0, -4 * TILE);
-    for (const a of [postL, postR]) {
-      a.castShadow = true;
-      a.name = 'temp-arch';
-      this.scene.add(a);
-    }
-    this.addBoxCollider(2.4 * TILE, -4 * TILE, 0.28, 0.28);
-    this.addBoxCollider(4.0 * TILE, -4 * TILE, 0.28, 0.28);
+    // Soft playable bounds (thin walls)
+    this.addAABB(-HALF_X - 0.4, HALF_X + 0.4, -HALF_Z - 0.6, -HALF_Z + 0.35);
+    this.addAABB(-HALF_X - 0.4, HALF_X + 0.4, HALF_Z - 0.35, HALF_Z + 0.6);
+    this.addAABB(-HALF_X - 0.6, -HALF_X + 0.35, -HALF_Z, HALF_Z);
+    this.addAABB(HALF_X - 0.35, HALF_X + 0.6, -HALF_Z, HALF_Z);
 
-    // Winter roadside clutter — keep road strip clear
     this.scatterSimpleRocks([
-      [-4.8, 1.8, 0.55, 0.35],
-      [4.6, -0.8, 0.7, 0.4],
-      [-1.8, 4.6, 0.5, 0.28],
-      [4.2, 4.0, 0.6, 0.32],
-      [-5.2, -4.8, 0.65, 0.38],
+      [-4.5, 35, 0.55, 0.35],
+      [4.2, 30, 0.5, 0.3],
+      [-4.8, 12, 0.45, 0.28],
+      [4.6, 4, 0.5, 0.3],
+      [-4.4, -8, 0.48, 0.28],
+      [4.8, -20, 0.52, 0.32],
+      [-5.0, -36, 0.55, 0.34],
+      [4.4, -42, 0.5, 0.3],
+      [3.8, 22, 0.4, 0.22],
+      [-3.9, -14, 0.42, 0.24],
     ]);
 
-    // Label: coordinate / art placeholder
     const labelCanvas = document.createElement('canvas');
-    labelCanvas.width = 512;
+    labelCanvas.width = 640;
     labelCanvas.height = 64;
     const ctx = labelCanvas.getContext('2d')!;
     ctx.fillStyle = 'rgba(40,36,30,0.55)';
-    ctx.fillRect(0, 0, 512, 64);
+    ctx.fillRect(0, 0, 640, 64);
     ctx.fillStyle = '#c8c0b0';
-    ctx.font = '28px Georgia, serif';
-    ctx.fillText('Fontfroide → Narbonne road  [ART PLACEHOLDER]', 16, 42);
+    ctx.font = '26px Georgia, serif';
+    ctx.fillText('Fontfroide → Narbonne  ·  contiguous outdoor  [ACT I]', 16, 42);
     const tex = new THREE.CanvasTexture(labelCanvas);
     const label = new THREE.Mesh(
-      new THREE.PlaneGeometry(6.5, 0.8),
+      new THREE.PlaneGeometry(10, 0.9),
       new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
     );
-    label.position.set(0, 0.05, 5.8);
+    label.position.set(0, 0.05, 48);
     label.rotation.x = -Math.PI / 2;
     label.name = 'art-label';
     this.scene.add(label);
 
-    const grid = new THREE.GridHelper(GRID * TILE, GRID, 0x4a4438, 0x4a4438);
+    const grid = new THREE.GridHelper(HALF_Z * 2, 40, 0x4a4438, 0x4a4438);
     grid.position.y = 0.01;
+    grid.scale.set(HALF_X / HALF_Z, 1, 1);
     (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.18;
+    (grid.material as THREE.Material).opacity = 0.12;
     this.scene.add(grid);
   }
 
@@ -524,16 +558,16 @@ export class World {
     }
 
     this.scatterSimpleRocks([
-      [-5.2, -3.6, 0.45, 0.25],
-      [5.0, -3.4, 0.5, 0.28],
-      [-5.0, 2.2, 0.4, 0.22],
-      [5.1, 3.0, 0.48, 0.26],
-      [-4.4, -0.4, 0.42, 0.24],
-      [4.6, -0.2, 0.46, 0.26],
-      [-1.6, 4.8, 0.38, 0.2],
-      [1.4, 4.6, 0.4, 0.22],
-      [-5.4, -4.8, 0.5, 0.28],
-      [5.3, 1.8, 0.44, 0.24],
+      [-5.62, -3.89, 0.45, 0.25],
+      [5.4, -3.67, 0.5, 0.28],
+      [-5.4, 2.38, 0.4, 0.22],
+      [5.51, 3.24, 0.48, 0.26],
+      [-4.75, -0.43, 0.42, 0.24],
+      [4.97, -0.22, 0.46, 0.26],
+      [-1.73, 5.18, 0.38, 0.2],
+      [1.51, 4.97, 0.4, 0.22],
+      [-5.83, -5.18, 0.5, 0.28],
+      [5.72, 1.94, 0.44, 0.24],
     ]);
 
     const labelCanvas = document.createElement('canvas');
@@ -613,16 +647,16 @@ export class World {
 
     // Edge clutter — leave center square + approaches clear
     this.scatterSimpleRocks([
-      [-4.0, 2.8, 0.55, 0.3],
-      [4.2, 2.4, 0.6, 0.32],
-      [-4.4, -3.2, 0.5, 0.28],
-      [4.0, -3.6, 0.55, 0.3],
-      [-3.2, 4.2, 0.7, 0.35],
-      [3.4, 4.0, 0.65, 0.34],
-      [-4.8, 0.2, 0.48, 0.26],
-      [4.6, -0.6, 0.5, 0.28],
-      [-1.8, 4.6, 0.42, 0.24],
-      [1.6, 4.5, 0.44, 0.25],
+      [-4.32, 3.02, 0.55, 0.3],
+      [4.54, 2.59, 0.6, 0.32],
+      [-4.75, -3.46, 0.5, 0.28],
+      [4.32, -3.89, 0.55, 0.3],
+      [-3.46, 4.54, 0.7, 0.35],
+      [3.67, 4.32, 0.65, 0.34],
+      [-5.18, 0.22, 0.48, 0.26],
+      [4.97, -0.65, 0.5, 0.28],
+      [-1.94, 4.97, 0.42, 0.24],
+      [1.73, 4.86, 0.44, 0.25],
     ]);
     const stump = new THREE.Mesh(
       new THREE.CylinderGeometry(0.28, 0.35, 0.35, 8),
@@ -698,8 +732,9 @@ export class World {
         metalness: 0.02,
       });
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(w * 0.55, 0), mat);
-      const px = gx * TILE * 0.9;
-      const pz = gz * TILE * 0.9;
+      // Spots are world meters (Act I outdoor + stub hubs)
+      const px = gx;
+      const pz = gz;
       rock.position.set(px, h * 0.35, pz);
       rock.scale.set(1, 0.55 + h * 0.35, 0.85);
       rock.rotation.set(0.2, gx + gz, 0.15);
@@ -871,8 +906,25 @@ export class World {
     }
 
     this.colliders = [];
-    this.addAABB(-4.2, -3.0, -GRID * TILE * 0.45, -0.9);
-    this.addAABB(-4.2, -3.0, 0.9, GRID * TILE * 0.45);
+    // Re-seed ditch gaps + soft bounds (Act I contiguous)
+    if (this.zone === 'act1_road') {
+      for (const [z0, z1] of [
+        [-48, -38],
+        [-30, -18],
+        [-10, 2],
+        [10, 28],
+        [34, 46],
+      ] as Array<[number, number]>) {
+        this.addAABB(-4.0, -2.8, z0 + 0.2, z1 - 0.2);
+      }
+      this.addAABB(-HALF_X - 0.4, HALF_X + 0.4, -HALF_Z - 0.6, -HALF_Z + 0.35);
+      this.addAABB(-HALF_X - 0.4, HALF_X + 0.4, HALF_Z - 0.35, HALF_Z + 0.6);
+      this.addAABB(-HALF_X - 0.6, -HALF_X + 0.35, -HALF_Z, HALF_Z);
+      this.addAABB(HALF_X - 0.35, HALF_X + 0.6, -HALF_Z, HALF_Z);
+    } else {
+      this.addAABB(-4.2, -3.0, -GRID * TILE * 0.45, -0.9);
+      this.addAABB(-4.2, -3.0, 0.9, GRID * TILE * 0.45);
+    }
     for (const n of this.activeNpcs) {
       this.addCircleCollider(
         n.x * TILE,
@@ -886,16 +938,21 @@ export class World {
     this.rebindEnvPropColliders();
 
     this.removeNamed('temp-building');
+    this.removeNamed('temp-building-fontfroide');
+    this.removeNamed('temp-building-parish');
+    this.removeNamed('temp-building-goldsmith');
+    this.removeNamed('temp-building-narbonne');
     this.removeNamed('temp-arch');
 
-    // Abbey / roadside stone structures (Kenney walls recolored toward dirt-and-mail)
-    // Tags let Art building shells strip interim Kenney/box when GLBs appear
-    this.placeBuilding(-5.0 * TILE * 0.85, -3.5 * TILE * 0.85, take, 'stone', 'kenney-building-west');
-    this.placeBuilding(-5.0 * TILE * 0.85, 0.5 * TILE * 0.85, take, 'stone', 'kenney-building-west');
-    this.placeBuilding(-5.0 * TILE * 0.85, 4.0 * TILE * 0.85, take, 'wood', 'kenney-building-west');
-    this.placeBuilding(5.0 * TILE * 0.85, -2.5 * TILE * 0.85, take, 'wood', 'kenney-building-parish');
-    this.placeBuilding(5.0 * TILE * 0.85, 2.5 * TILE * 0.85, take, 'wood');
-    this.placeBuilding(1.5 * TILE * 0.85, 5.2 * TILE * 0.85, take, 'wood');
+    // Hub shells along contiguous Act I (world meters; |x|≥4)
+    this.placeBuilding(-8.5, 40, take, 'stone', 'kenney-building-west');
+    this.placeBuilding(-9.0, 36, take, 'stone', 'kenney-building-west');
+    this.placeBuilding(-7.5, 42, take, 'wood', 'kenney-building-west');
+    this.placeBuilding(9.5, -1.5, take, 'wood', 'kenney-building-parish');
+    this.placeBuilding(-9.0, -13, take, 'wood', 'kenney-building-goldsmith');
+    this.placeBuilding(9.0, -44, take, 'wood', 'kenney-building-narbonne');
+    this.placeBuilding(5.5, 24, take, 'wood');
+    this.placeBuilding(-5.8, 20, take, 'wood');
 
     const pillarL = take('pillar');
     const pillarR = take('pillar');
@@ -904,26 +961,30 @@ export class World {
       fitToHeight(pillarR, 2.0);
       tintMeshes(pillarL, 0x6a6860, 0.25);
       tintMeshes(pillarR, 0x6a6860, 0.25);
-      pillarL.position.set(2.4 * TILE, 0, -4 * TILE);
-      pillarR.position.set(4.0 * TILE, 0, -4 * TILE);
+      // Parish approach posts (east of road, near Ramon)
+      pillarL.position.set(5.2, 0, -0.5);
+      pillarR.position.set(6.8, 0, -0.5);
       this.scene.add(pillarL, pillarR);
-      this.addBoxCollider(2.4 * TILE, -4 * TILE, 0.3, 0.3);
-      this.addBoxCollider(4.0 * TILE, -4 * TILE, 0.3, 0.3);
+      this.addBoxCollider(5.2, -0.5, 0.3, 0.3);
+      this.addBoxCollider(6.8, -0.5, 0.3, 0.3);
     } else {
       const postMat = new THREE.MeshStandardMaterial({ color: 0x686860, roughness: 0.88 });
       const aL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.0, 0.4), postMat);
       const aR = aL.clone();
-      aL.position.set(2.4 * TILE, 1.0, -4 * TILE);
-      aR.position.set(4.0 * TILE, 1.0, -4 * TILE);
+      aL.position.set(5.2, 1.0, -0.5);
+      aR.position.set(6.8, 1.0, -0.5);
       this.scene.add(aL, aR);
-      this.addBoxCollider(2.4 * TILE, -4 * TILE, 0.28, 0.28);
-      this.addBoxCollider(4.0 * TILE, -4 * TILE, 0.28, 0.28);
+      this.addBoxCollider(5.2, -0.5, 0.28, 0.28);
+      this.addBoxCollider(6.8, -0.5, 0.28, 0.28);
     }
 
     for (const [x, z] of [
-      [-2.2, 2.0],
-      [-2.5, 2.4],
-      [3.8, 1.8],
+      [-2.4, 36],
+      [3.6, 20],
+      [-2.6, 6],
+      [3.5, -14],
+      [-2.5, -30],
+      [3.4, -42],
     ] as const) {
       const barrel = take('barrel');
       if (!barrel) break;
@@ -1519,6 +1580,16 @@ export class World {
       this.scene.add(arcade);
       this.addBoxCollider(cx - 0.95, cz - 1.35, 1.35, 0.85);
     }
+    const arcadeB = await loadModel(PATH.cloisterArcadeB);
+    if (arcadeB) {
+      fitToHeight(arcadeB, 3.0);
+      tintMeshes(arcadeB, 0x626058, 0.1);
+      arcadeB.position.set(cx - 1.1, 0, cz + 2.4);
+      arcadeB.rotation.y = Math.PI * 0.1;
+      arcadeB.name = 'cloister-arcade-b-art';
+      this.scene.add(arcadeB);
+      this.addBoxCollider(cx - 1.1, cz + 2.4, 1.2, 0.8);
+    }
     const well = await loadModel(PATH.cloisterWell);
     if (well) {
       fitToHeight(well, 1.5);
@@ -1616,8 +1687,8 @@ export class World {
       // East roadside house — off walk lane
       const house = await loadModel(PATH.roadHouseShell);
       if (house) {
-        const x = 4.55;
-        const z = 1.6;
+        const x = 5.8;
+        const z = 8.0;
         placeVisual(house, 'road-house-shell-art', x, z, 2.9, -Math.PI * 0.5);
         placeWallColliders(x, z, 1.05, 0.95, 0.26, 1.2);
       }
@@ -1657,12 +1728,19 @@ export class World {
     if (cart) {
       fitToHeight(cart, 0.9);
       tintMeshes(cart, 0x4a4034, 0.2);
-      // East of road strip (road ~x=0.2, width 2.4) — keep follower trail clear
-      cart.position.set(3.4, 0, -0.6);
-      cart.rotation.y = -0.35;
-      cart.name = 'road-cart-art';
-      this.scene.add(cart);
-      this.addBoxCollider(3.4, -0.6, 0.65, 0.4);
+      // Shoulders only — |x| 1.2–4; keep crown clear for follower trail
+      for (const [x, z, rot] of [
+        [3.2, 19.5, -0.35],
+        [3.4, -8.0, 0.2],
+        [-3.3, -24.0, 0.4],
+      ] as const) {
+        const c = cart.clone(true);
+        c.position.set(x, 0, z);
+        c.rotation.y = rot;
+        c.name = 'road-cart-art';
+        this.scene.add(c);
+        this.addBoxCollider(x, z, 0.65, 0.4);
+      }
     }
 
     const fenceRun = (await loadModel(PATH.roadFenceRun)) ?? (await loadModel(PATH.fence));
@@ -1670,8 +1748,11 @@ export class World {
       fitToHeight(fenceRun, 1.1);
       tintMeshes(fenceRun, 0x3a3830, 0.28);
       for (const [x, z, rot] of [
-        [-4.4, 4.6, 0],
-        [4.4, -3.6, Math.PI / 2],
+        [-3.6, 34, 0],
+        [3.6, 12, 0],
+        [-3.6, -6, 0],
+        [3.6, -22, Math.PI / 2],
+        [-3.8, -40, 0],
       ] as const) {
         const f = fenceRun.clone(true);
         f.position.set(x, 0, z);
@@ -1687,9 +1768,12 @@ export class World {
       fitToHeight(mud, 0.08);
       tintMeshes(mud, 0x3a342c, 0.15);
       for (const [x, z, rot] of [
-        [0.25, 1.2, 0.08],
-        [0.1, -1.5, -0.12],
-        [0.3, 3.0, 0.04],
+        [0.2, 30, 0.08],
+        [0.1, 18, -0.1],
+        [0.25, 6, 0.04],
+        [0.15, -12, -0.08],
+        [0.2, -28, 0.06],
+        [0.1, -40, -0.05],
       ] as const) {
         const p = mud.clone(true);
         p.position.set(x, 0.01, z);
@@ -1704,8 +1788,9 @@ export class World {
       fitToHeight(bundle, 0.55);
       tintMeshes(bundle, 0x5a4838, 0.12);
       for (const [x, z] of [
-        [-2.4, 3.2],
-        [3.6, 3.8],
+        [-2.4, 22],
+        [3.2, 17],
+        [-2.6, -2],
       ] as const) {
         const b = bundle.clone(true);
         b.position.set(x, 0, z);
@@ -1718,21 +1803,32 @@ export class World {
     if (cross) {
       fitToHeight(cross, 1.6);
       tintMeshes(cross, 0x5a5848, 0.12);
-      cross.position.set(-2.6, 0, 4.2);
-      cross.name = 'wayside-cross-art';
-      this.scene.add(cross);
-      this.addCircleCollider(-2.6, 4.2, 0.22);
+      for (const [x, z] of [
+        [-2.6, 21],
+        [2.8, -15],
+        [-2.4, -36],
+      ] as const) {
+        const c = cross.clone(true);
+        c.position.set(x, 0, z);
+        c.name = 'wayside-cross-art';
+        this.scene.add(c);
+        this.addCircleCollider(x, z, 0.22);
+      }
     }
 
-    // Extra mile markers along Fontfroide–Narbonne road (repeat existing prop)
+    // Mile markers along Fontfroide–Narbonne road
     const mile = await loadModel(PATH.mileMarker);
     if (mile) {
       fitToHeight(mile, 1.15);
       tintMeshes(mile, 0x6a6860, 0.12);
       for (const [x, z] of [
-        [-1.5, 2.4],
-        [1.7, -0.8],
-        [-1.55, -4.0],
+        [-1.55, 38],
+        [1.6, 22],
+        [-1.55, 8],
+        [1.55, -2],
+        [-1.55, -14],
+        [1.6, -32],
+        [-1.5, -44],
       ] as const) {
         const m = mile.clone(true);
         m.position.set(x, 0, z);
@@ -1754,6 +1850,81 @@ export class World {
       boat.name = 'ferry-boat-art';
       this.scene.add(boat);
       this.addBoxCollider(fx + 1.4, fz - 0.2, 0.9, 0.45);
+    }
+
+    await this.tryHookOpenMapStockpile();
+  }
+
+  /** Non-blocking: ruin debris, sheds, trees, market stall — |x|≥4 / hubs; crown clear. */
+  private async tryHookOpenMapStockpile(): Promise<void> {
+    if (this.zone !== 'act1_road') return;
+
+    const debris = await loadModel(PATH.ruinDebrisPile);
+    if (debris) {
+      fitToHeight(debris, 0.85);
+      tintMeshes(debris, 0x5a5848, 0.15);
+      for (const [x, z, rot] of [
+        [-5.2, 36, 0.2],
+        [5.4, 10, -0.3],
+        [-5.5, -16, 0.4],
+        [5.6, -40, 0.1],
+      ] as const) {
+        const d = debris.clone(true);
+        d.position.set(x, 0, z);
+        d.rotation.y = rot;
+        d.name = 'ruin-debris-art';
+        this.scene.add(d);
+        this.addCircleCollider(x, z, 0.45);
+      }
+    }
+
+    const shed = await loadModel(PATH.villageShed);
+    if (shed) {
+      fitToHeight(shed, 2.2);
+      tintMeshes(shed, 0x4a4438, 0.12);
+      for (const [x, z, rot] of [
+        [5.8, 22, 0.15],
+        [-6.2, -8, -0.2],
+        [6.0, -28, 0.1],
+      ] as const) {
+        const s = shed.clone(true);
+        s.position.set(x, 0, z);
+        s.rotation.y = rot;
+        s.name = 'village-shed-art';
+        this.scene.add(s);
+        this.addBoxCollider(x, z, 1.0, 0.85);
+      }
+    }
+
+    const tree = await loadModel(PATH.oliveOrCypress);
+    if (tree) {
+      fitToHeight(tree, 3.4);
+      tintMeshes(tree, 0x3a4038, 0.18);
+      for (const [x, z] of [
+        [-5.0, 42],
+        [5.2, 28],
+        [-5.4, 4],
+        [5.5, -10],
+        [-5.2, -26],
+        [5.3, -46],
+      ] as const) {
+        const t = tree.clone(true);
+        t.position.set(x, 0, z);
+        t.name = 'olive-cypress-art';
+        this.scene.add(t);
+        this.addCircleCollider(x, z, 0.35);
+      }
+    }
+
+    const stall = await loadModel(PATH.marketStall);
+    if (stall) {
+      fitToHeight(stall, 2.0);
+      tintMeshes(stall, 0x5a4840, 0.12);
+      stall.position.set(7.2, 0, -43);
+      stall.rotation.y = -0.35;
+      stall.name = 'market-stall-art';
+      this.scene.add(stall);
+      this.addBoxCollider(7.2, -43, 1.1, 0.7);
     }
   }
 
@@ -1907,6 +2078,18 @@ export class World {
       const rest = await loadModel(PATH.leperRest);
       if (rest) {
         await this.upgradeNpc('leper', rest, 0.95, 0x5a5848, 0.1);
+        const bellPost = await loadModel(PATH.leperBellPost);
+        if (bellPost) {
+          const bellNpc = this.activeNpcs.find((n) => n.id === 'leper_bell') ?? this.activeNpcs.find((n) => n.id === 'leper');
+          const bx = (bellNpc?.x ?? -2.8) * TILE;
+          const bz = (bellNpc?.z ?? -0.6) * TILE;
+          fitToHeight(bellPost, 2.4);
+          tintMeshes(bellPost, 0x4a4840, 0.12);
+          bellPost.position.set(bx - 0.7, 0, bz + 0.5);
+          bellPost.name = 'leper-bell-post-art';
+          this.scene.add(bellPost);
+          this.addCircleCollider(bx - 0.7, bz + 0.5, 0.28);
+        }
         const leper = this.activeNpcs.find((n) => n.id === 'leper');
         const lx = (leper?.x ?? -2.0) * TILE;
         const lz = (leper?.z ?? -1.5) * TILE;
@@ -2178,10 +2361,16 @@ export class World {
     return best;
   }
 
-  moveToWorld(point: THREE.Vector3): void {
+  private playableHalf(): { hx: number; hz: number } {
+    if (this.zone === 'act1_road') return { hx: HALF_X - 0.5, hz: HALF_Z - 0.5 };
     const half = (GRID * TILE) / 2 - 0.4;
-    point.x = Math.max(-half, Math.min(half, point.x));
-    point.z = Math.max(-half, Math.min(half, point.z));
+    return { hx: half, hz: half };
+  }
+
+  moveToWorld(point: THREE.Vector3): void {
+    const { hx, hz } = this.playableHalf();
+    point.x = Math.max(-hx, Math.min(hx, point.x));
+    point.z = Math.max(-hz, Math.min(hz, point.z));
     this.pathTarget = point;
     this.marker.position.set(point.x, 0.05, point.z);
     this.marker.visible = true;

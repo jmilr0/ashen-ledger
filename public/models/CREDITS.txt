@@ -30,6 +30,12 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   priory_nave_shell (tools/make_priory_nave_shell.py) — ruined nave shell for hold_door (damaged roof);
   road_house_shell (tools/make_road_house_shell.py) — mud-road limestone/plaster village house + thatch;
   goldsmith_shop_shell (tools/make_goldsmith_shop_shell.py) — boarded workshop/house + chimney (mold beat).
+  cloister_arcade_b (tools/make_cloister_arcade_b.py) — Fontfroide cloister bay variant B (twin cols + bench), tile_pitch 3.20 m;
+  ruin_debris_pile (tools/make_ruin_debris_pile.py) — limestone rubble densifier (Corbières / ruin yards);
+  village_shed (tools/make_village_shed.py) — compact lean-to shed, open front ≥1.2 m;
+  olive_or_cypress (tools/make_olive_or_cypress.py) — Mediterranean cypress (not fantasy pine);
+  market_stall (tools/make_market_stall.py) — canvas/wood wayside stall (Narbonne/road market);
+  leper_bell_post (tools/make_leper_bell_post.py) — oak post + iron leper bell (Act III beat).
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
 
 Named NPC hero meshes (shipped; replace interim remaps):
@@ -42,7 +48,8 @@ Named NPC hero meshes (shipped; replace interim remaps):
   Capsule width ≤0.58 m (0.6 m diameter). Dirt-and-mail Occitania 1208–10; no glow.
 
 Art path hooks (optional drops, non-blocking):
-  props/: mile_marker, mold_cavity, cloister_arcade, cloister_well, leper_rest,
+  props/: mile_marker, mold_cavity, cloister_arcade, cloister_arcade_b, cloister_well, leper_rest,
+    ruin_debris_pile, village_shed, olive_or_cypress, market_stall, leper_bell_post,
     road_cart, road_fence_run, mud_rut_patch, pilgrim_bundle, wayside_cross, ferry_boat;
   building shells (exact): fontfroide_dormer, parish_nave_shell, priory_ruin_wall,
     priory_nave_shell, road_house_shell, goldsmith_shop_shell — replace Kenney/box when present;
@@ -50,3 +57,6 @@ Art path hooks (optional drops, non-blocking):
     berna/hugues/serena/guiraut/mairia/ramon (named NPCs shipped).
   GD: cart/fence colliders off walk lane; mud_rut_patch + pilgrim_bundle visual-only;
     shell doorways ≥1.2 m clear; wall colliders tight; NPC capsules ~0.6 m.
+  GD open-map (docs/open-map-extents-act1.md): road crown x∈[-1.2,1.2]=2.4 m CLEAR;
+    soft shoulders |x| 1.2–4 light dressing; heavy shells |x|≥4 + hub pockets;
+    stockpile off_lane — see each *_scale.txt place_band / hub_anchor_hint.

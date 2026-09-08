@@ -198,6 +198,17 @@ export function buildJournal(flags: FlagMap, _party?: PartyMember[]): JournalEnt
     });
   }
 
+
+  if (flags.road_help_cart) {
+    entries.push({
+      id: 'road_help_cart',
+      title: 'Widow’s axle',
+      body: 'Braced a widow’s axle. Bread may follow.',
+      status: 'done',
+      sort: 35,
+    });
+  }
+
   // Act III journal map (07 + 08 zone enter)
   if (!!flags.talked_serena || !!flags.act3_beat || !!flags.act3_done || String(flags.map_zone) === 'act3_close') {
     const named = !!flags.lord_name;

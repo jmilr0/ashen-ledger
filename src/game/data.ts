@@ -1,6 +1,6 @@
 import type { DialogueNode, Item, MapZone, NpcDef, PartyMember } from './types';
 
-export const PLAYER_START = { x: 0, z: 3 };
+export const PLAYER_START = { x: -1.0, z: 30.5 }; // Fontfroide yard (~−1.2 m, +36.6 m)
 export const CORBIERES_START = { x: 0, z: 2 };
 export const ACT3_START = { x: 0, z: 2 };
 
@@ -122,6 +122,13 @@ export const DEFAULT_FLAGS: Record<string, boolean | string | number> = {
   priory_fight_done: false,
   /** Engineering: Rest once-per-beat key (mapZone:beat). */
   rested_beat_key: '',
+  road_help_cart: false,
+  talked_wayside_monk: false,
+  talked_cart_widow: false,
+  talked_ferry_idler: false,
+  talked_vine_boy: false,
+  talked_leper_bell: false,
+  talked_market_crier: false,
 };
 
 export const DIALOGUES: Record<string, DialogueNode[]> = {
@@ -794,15 +801,275 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
       ],
     },
   ],
+  // --- Interactive cast (13): party RMB + road NPCs ---
+  party_guide: [
+    {
+      id: 'start',
+      speaker: 'Catalana',
+      text: 'Draille’s soft after rain. Badges like borrowed stamps, houses that still take strangers, loft angles — ask before you charge the nave.',
+      choices: [
+        { text: 'Any cut off the road?', next: 'cut' },
+        { text: 'What do you make of the column?', next: 'column' },
+        { text: '(Leave her to scout)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'cut',
+      speaker: 'Catalana',
+      text: 'Sheep-paths behind the mile marker, and a willow ditch before the ferry. Both beat dying on the crown of the road.',
+      choices: [{ text: 'Show me when it matters.', effect: 'end' }],
+    },
+    {
+      id: 'column',
+      speaker: 'Catalana',
+      text: 'Hungry mouths are witnesses. Lose them and every village hears we chose a bag over a mule.',
+      choices: [{ text: 'Understood.', effect: 'end' }],
+    },
+  ],
+  party_sergeant: [
+    {
+      id: 'start',
+      speaker: 'Sergeant Guillem',
+      text: 'Formation first. I Hold doors and ropes; you don’t sprint Cut. Watch rotations — if someone’s bleeding, Elias works before I shove another spear.',
+      choices: [
+        { text: 'How do you want us lined?', next: 'line' },
+        { text: 'The bag.', next: 'bag' },
+        { text: '(Back to the road)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'line',
+      speaker: 'Sergeant Guillem',
+      text: 'Me front. Convers on latches. Guide loft if there’s a loft. Clerk behind my shoulder. Surgeon last — he’s not a blade.',
+      choices: [{ text: 'Locked.', effect: 'end' }],
+    },
+    {
+      id: 'bag',
+      speaker: 'Sergeant Guillem',
+      text: 'Whoever carries it doesn’t drop it for cleverness. Broken wax makes us the next forgers on this road.',
+      choices: [{ text: 'Bag stays dry.', effect: 'end' }],
+    },
+  ],
+  party_convers: [
+    {
+      id: 'start',
+      speaker: 'Brother Peire',
+      text: 'Keys, grain, soft latches. I cut rope under Hold — not before. If you need a quiet snap of pine later, my hands are already dirty from barn work.',
+      choices: [
+        { text: 'Abbey life miss you?', next: 'abbey' },
+        { text: 'Any lock ahead worry you?', next: 'lock' },
+        { text: '(Leave him)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'abbey',
+      speaker: 'Brother Peire',
+      text: 'Fontfroide still has oats. This road has captains. I know which one starves you slower.',
+      choices: [{ text: 'Fair.', effect: 'end' }],
+    },
+    {
+      id: 'lock',
+      speaker: 'Brother Peire',
+      text: 'Goldsmith floorboards, nave bars, sheep-gates — all softer than they look if nobody’s watching the hinge.',
+      choices: [{ text: 'I’ll call you to the hinge.', effect: 'end' }],
+    },
+  ],
+  party_clerk: [
+    {
+      id: 'start',
+      speaker: 'Arnau the Clerk',
+      text: 'Seals, rim names, chancery hands. I Call out lies on badges and I do not peek the true letter unless you order a sin we both own.',
+      choices: [
+        { text: 'Remind me what was wrong with their bull.', next: 'bull' },
+        { text: 'Narbonne.', next: 'narb' },
+        { text: '(Leave the ink alone)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'bull',
+      speaker: 'Arnau the Clerk',
+      text: 'Die soft on the keys. Rim name belongs to a dead chamberlain. Crowd kneels; careful clerks spit.',
+      choices: [{ text: 'Keep spitting.', effect: 'end' }],
+    },
+    {
+      id: 'narb',
+      speaker: 'Arnau the Clerk',
+      text: 'Agent wants names and unbroken wax. Mold kept, drowned, or given — each writes a different rope.',
+      choices: [{ text: 'We’ll choose cleanly.', effect: 'end' }],
+    },
+  ],
+  party_surgeon: [
+    {
+      id: 'start',
+      speaker: 'Master Elias',
+      text: 'I’m not a blade. Stabilize in the press; Rest between roofs — linen and time, once a beat. Prayer is weather, not a button.',
+      choices: [
+        { text: 'Who’s worst right now?', next: 'triage' },
+        { text: 'What poisons should we fear?', next: 'poison' },
+        { text: '(Let him pack linen)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'triage',
+      speaker: 'Master Elias',
+      text: 'Whoever’s marked bleeding drops next if I don’t touch them. Out-for-act means they walk the mule, not the spear line.',
+      choices: [{ text: 'I’ll call Rest at the next roof.', effect: 'end' }],
+    },
+    {
+      id: 'poison',
+      speaker: 'Master Elias',
+      text: 'Well water after a host camps, and anything a goldsmith leaves in a cup. Boil what you can. Don’t kiss relics.',
+      choices: [{ text: 'Noted.', effect: 'end' }],
+    },
+  ],
+  wayside_monk: [
+    {
+      id: 'start',
+      speaker: 'Wayside Monk',
+      text: 'Cross is older than this war. I don’t bless captains. I count who still buries their dead.',
+      choices: [
+        { text: 'Seen borrowed badges?', next: 'badges' },
+        { text: 'Any word of Fontfroide’s chest?', next: 'chest' },
+        { text: '(Pass on)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'badges',
+      speaker: 'Wayside Monk',
+      text: 'Men with Hospital marks and farmer horses. Catalana would smell them before I finished the Ave.',
+      choices: [{ text: 'Obliged.', effect: 'end' }],
+    },
+    {
+      id: 'chest',
+      speaker: 'Wayside Monk',
+      text: 'Abbey wax on the road is never holy for long. Keep your seal bag closed.',
+      choices: [{ text: 'We intend to.', effect: 'end' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Wayside Monk',
+      text: 'Still counting graves. The road doesn’t get shorter.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  cart_widow: [
+    {
+      id: 'start',
+      speaker: 'Cart Widow',
+      text: 'Axle’s cracked and the host eats axles. Don’t ask me for the pilgrim road’s kindness — ask if you’ve got a Convers who can brace wood.',
+      choices: [
+        { text: '[Convers] I can brace it. No coin.', next: 'brace', effect: 'road_help_cart' },
+        { text: 'We can’t linger.', effect: 'end' },
+      ],
+    },
+    {
+      id: 'brace',
+      speaker: 'Cart Widow',
+      text: 'Then the next village owes you bread, not me. Go before the badges smell a stopped cart.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Cart Widow',
+      text: 'Axle holds. Don’t stand in the ruts.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  ferry_idler: [
+    {
+      id: 'start',
+      speaker: 'Idle Boatman',
+      text: 'Rope fight’s for men with sergeants. I just know the Aude takes whatever you drop — mold, bodies, bad seals.',
+      choices: [
+        { text: 'Any watch on the far latch?', next: 'watch' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'watch',
+      speaker: 'Idle Boatman',
+      text: 'Always. Cut under Hold or swim with your letter.',
+      choices: [{ text: 'We’ll Hold.', effect: 'end' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Idle Boatman',
+      text: 'River’s still hungry. Keep your bag dry.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  vine_boy: [
+    {
+      id: 'start',
+      speaker: 'Vine Boy',
+      text: 'Northern men count rows like they’re already paid. Berna’s box makes old women kneel. I just want the sheep-gate left open.',
+      choices: [
+        { text: 'Where’s the loft?', next: 'loft' },
+        { text: 'Who paid for the show?', next: 'pay' },
+        { text: '(Move on)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'loft',
+      speaker: 'Vine Boy',
+      text: 'Above the false altar. Crossbow likes that cough of smoke.',
+      choices: [{ text: 'Catalana’s problem.', effect: 'end' }],
+    },
+    {
+      id: 'pay',
+      speaker: 'Vine Boy',
+      text: 'Ask Na Serena. She sold wine to the purse. I only carry baskets.',
+      choices: [{ text: 'We will.', effect: 'end' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Vine Boy',
+      text: 'Gate still stuck. Rows still counted.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+  leper_bell: [
+    {
+      id: 'start',
+      speaker: 'Gate Ringer',
+      text: 'No parish bells. We ring wood so captains don’t pretend they didn’t see the door. Sleep if Elias is with you. Don’t bring iron inside.',
+      choices: [{ text: 'Understood.', effect: 'end' }],
+    },
+  ],
+  market_crier: [
+    {
+      id: 'start',
+      speaker: 'Market Crier',
+      text: 'Interdict weather — thin market, locked ground, rumors thicker than bread. Hooded clerks buy silence with unbroken wax.',
+      choices: [
+        { text: 'Seen a legate ride?', next: 'legate' },
+        { text: '(Pass)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'legate',
+      speaker: 'Market Crier',
+      text: 'North, or so the ferrymen swear. Your agent will know if the letter still matters.',
+      choices: [{ text: 'We’ll ask him.', effect: 'end' }],
+    },
+    {
+      id: 'after',
+      speaker: 'Market Crier',
+      text: 'Still thin. Still talking.',
+      choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+
 };
 
 export const NPCS = [
+  // Tile coords = world meters / TILE(1.2). Hubs per docs/open-map-extents-act1.md
   {
     id: 'cellarer',
     name: 'Brother Guiraut',
     color: 0x6a6a58,
-    x: -3.2,
-    z: -1.2,
+    x: -5.0,
+    z: 31.7,
     dialogueId: 'cellarer',
     hint: 'Talk to the cellarer',
   },
@@ -810,17 +1077,35 @@ export const NPCS = [
     id: 'mairia',
     name: 'Mairia of Quillan',
     color: 0x6a5038,
-    x: 2.2,
-    z: 2.0,
+    x: 1.8,
+    z: 18.5,
     dialogueId: 'pilgrim_mairia',
     hint: 'Talk to Mairia',
+  },
+  {
+    id: 'wayside_monk',
+    name: 'Wayside Monk',
+    color: 0x5a5848,
+    x: -1.83,
+    z: 20.0,
+    dialogueId: 'wayside_monk',
+    hint: 'Talk to wayside monk',
+  },
+  {
+    id: 'cart_widow',
+    name: 'Cart Widow',
+    color: 0x6a5040,
+    x: 2.0,
+    z: 16.67,
+    dialogueId: 'cart_widow',
+    hint: 'Talk to cart widow',
   },
   {
     id: 'bandits',
     name: 'Badge Bandits',
     color: 0x3a3028,
-    x: 3.2,
-    z: -3.8,
+    x: 0.9,
+    z: 6.7,
     dialogueId: 'bandit_captain',
     hint: 'Confront badge bandits',
     combat: true,
@@ -829,8 +1114,8 @@ export const NPCS = [
     id: 'parish',
     name: 'Father Ramon',
     color: 0x5a5848,
-    x: 0.8,
-    z: -2.6,
+    x: 5.8,
+    z: -1.7,
     dialogueId: 'priest_ramon',
     hint: 'Parish porch',
   },
@@ -838,8 +1123,8 @@ export const NPCS = [
     id: 'mold',
     name: 'Viscount’s Rider',
     color: 0x4a4858,
-    x: -2.0,
-    z: -3.5,
+    x: -5.8,
+    z: -11.7,
     dialogueId: 'mold_choice',
     hint: 'Mold choice',
   },
@@ -847,32 +1132,58 @@ export const NPCS = [
     id: 'ferry',
     name: 'Ferry Rope',
     color: 0x4a4030,
-    x: 0.5,
-    z: -5.0,
+    x: 0.0,
+    z: -26.7,
     dialogueId: 'ferry_rope',
     hint: 'Ferry crossing',
     combat: true,
   },
   {
+    id: 'ferry_idler',
+    name: 'Idle Boatman',
+    color: 0x4a5048,
+    x: -2.08,
+    z: -25.0,
+    dialogueId: 'ferry_idler',
+    hint: 'Talk to boatman',
+  },
+  {
     id: 'narbonne',
     name: 'Narbonne Agent',
     color: 0x3a4858,
-    x: -1.2,
-    z: -4.8,
+    x: 4.2,
+    z: -36.7,
     dialogueId: 'narbonne_agent',
     hint: 'Deliver the letter',
+  },
+  {
+    id: 'market_crier',
+    name: 'Market Crier',
+    color: 0x5a4840,
+    x: 2.92,
+    z: -35.0,
+    dialogueId: 'market_crier',
+    hint: 'Market crier',
+  },
+  {
+    id: 'vine_boy',
+    name: 'Vine Boy',
+    color: 0x5a5038,
+    x: -2.67,
+    z: -21.67,
+    dialogueId: 'vine_boy',
+    hint: 'Vine boy at Corbières turnoff',
   },
   {
     id: 'corbieres_road',
     name: 'Road to Corbières',
     color: 0x4a4030,
-    x: -2.8,
-    z: -5.0,
+    x: -3.3,
+    z: -23.3,
     dialogueId: 'corbieres_road',
     hint: 'Hill road to Corbières (Act II stub)',
   },
 ] as const satisfies readonly NpcDef[];
-
 export const CORBIERES_NPCS = [
   {
     id: 'priory_door',
@@ -921,6 +1232,15 @@ export const CORBIERES_NPCS = [
     hint: 'Vine widow — name seed',
   },
   {
+    id: 'vine_boy',
+    name: 'Vine Boy',
+    color: 0x5a5038,
+    x: 2.4,
+    z: 2.2,
+    dialogueId: 'vine_boy',
+    hint: 'Vine boy on the approach',
+  },
+  {
     id: 'road_back',
     name: 'Road to Narbonne',
     color: 0x4a4030,
@@ -958,6 +1278,15 @@ export const ACT3_NPCS = [
     z: -1.5,
     dialogueId: 'leper_house',
     hint: 'Infirmary roof',
+  },
+  {
+    id: 'leper_bell',
+    name: 'Gate Ringer',
+    color: 0x4a5840,
+    x: -2.8,
+    z: -0.6,
+    dialogueId: 'leper_bell',
+    hint: 'Gate ringer — ambient',
   },
   {
     id: 'lord',
@@ -1011,8 +1340,8 @@ export const ACT1_ACT3_GATE: NpcDef = {
   id: 'act3_gate',
   name: 'River Watch / Act III',
   color: 0x3a4858,
-  x: 1.5,
-  z: -5.0,
+  x: 2.5,
+  z: -40.0,
   dialogueId: 'act3_gate',
   hint: 'Act III close (after Serena)',
 };

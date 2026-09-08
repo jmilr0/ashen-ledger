@@ -481,25 +481,25 @@ export class Game {
       </button>`;
     }).join('');
     strip.querySelectorAll('[data-job]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = (btn as HTMLElement).dataset.job as JobId;
+      const el = btn as HTMLElement;
+      el.addEventListener('click', () => {
+        const id = el.dataset.job as JobId;
         if (this.screen === 'hub') this.selectCompanion(id);
+      });
+      el.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        const id = el.dataset.job as JobId;
+        if (this.screen === 'hub') this.talkPartyCompanion(id);
       });
     });
   }
 
-  /** Chunk (2) stub: RMB party bark — Narrative thickens later. */
+  /** Interactive cast (13): RMB follower/portrait → party_<jobId> trees. */
   private talkPartyCompanion(id: JobId): void {
     const m = this.party.find((p) => p.id === id);
     if (!m || !m.recruited || m.outForAct || m.stats.hp <= 0) return;
-    const barks: Record<JobId, string> = {
-      guide: 'Catalana: Road’s still wet. I keep the column’s pace.',
-      sergeant: 'Guillem: Formation holds. Point me when iron’s up.',
-      convers: 'Peire: Latches and rope — say the word.',
-      clerk: 'Arnau: Wax stays closed. Ask when you need the letter.',
-      surgeon: 'Elias: Linen’s ready. Don’t open bleeds for sport.',
-    };
-    this.toast(barks[id] ?? `${m.name}: …`);
+    // Don’t open talk on the controlled body via portrait if it’s the bag pip only — full trees OK
+    this.startDialogue(`party_${id}`);
   }
 
   private tryInteract(): void {
@@ -714,9 +714,15 @@ export class Game {
     else if (id === 'lord_rumor' && this.flags.hint_lord_road && !this.flags.lord_fate) startId = 'hinted';
     if (id === 'splinter_judgment' && this.flags.act3_done) startId = 'after';
     else if (id === 'splinter_judgment' && this.flags.splinter_end) startId = 'close';
+    if (id === 'wayside_monk' && this.flags.talked_wayside_monk) startId = 'after';
+    if (id === 'cart_widow' && (this.flags.talked_cart_widow || this.flags.road_help_cart)) startId = 'after';
+    if (id === 'ferry_idler' && this.flags.talked_ferry_idler) startId = 'after';
+    if (id === 'vine_boy' && this.flags.talked_vine_boy) startId = 'after';
+    if (id === 'market_crier' && this.flags.talked_market_crier) startId = 'after';
     this.dialogueNode = tree.find((n) => n.id === startId) ?? tree[0];
     this.dialogueNode = this.maybeAutoPilgrimClose(this.dialogueNode);
     this.dialogueNode = this.maybeAct3Variants(this.dialogueNode, id);
+    this.dialogueNode = this.maybePartyCastVariants(this.dialogueNode, id);
     this.dialogueNode = this.maybeContinuityLines(this.dialogueNode, id);
     this.screen = 'dialogue';
     this.drawDialogue();
@@ -731,7 +737,22 @@ export class Game {
       this.ui.appendChild(box);
     }
     const node = this.dialogueNode!;
-    const choices = node.choices ?? [{ text: '(Continue)', effect: 'end' }];
+    let choices = node.choices ?? [{ text: '(Continue)', effect: 'end' }];
+    choices = choices.filter((c) => {
+      const m = /^\[(Clerk|Sergeant|Convers|Guide|Surgeon)\]/.exec(c.text);
+      if (!m) return true;
+      const map: Record<string, JobId> = {
+        Clerk: 'clerk',
+        Sergeant: 'sergeant',
+        Convers: 'convers',
+        Guide: 'guide',
+        Surgeon: 'surgeon',
+      };
+      const job = map[m[1]];
+      const p = this.party.find((x) => x.id === job);
+      return !!(p && p.recruited && !p.outForAct && p.stats.hp > 0);
+    });
+    if (!choices.length) choices = [{ text: '(Leave)', effect: 'end' }];
     box.innerHTML = `
       <div class="speaker">${node.speaker}</div>
       <div class="text">${node.text}</div>
@@ -874,6 +895,20 @@ export class Game {
     }
   }
 
+  /** Party cast (13): clerk forger start swap. */
+  private maybePartyCastVariants(node: DialogueNode | null, id: string): DialogueNode | null {
+    if (!node) return node;
+    if (id === 'party_clerk' && node.id === 'start') {
+      if (this.flags.party_is_forger || this.flags.seal_intact === false) {
+        return {
+          ...node,
+          text: 'Wax is already broken on us. Gates will smell it. Walk soft and don’t offer to Show seal in a fight.',
+        };
+      }
+    }
+    return node;
+  }
+
   /** 08 continuity one-liners when revisiting Act I NPCs (no new flags). */
   private maybeContinuityLines(node: DialogueNode | null, id: string): DialogueNode | null {
     if (!node || node.id !== 'after') return node;
@@ -921,7 +956,27 @@ export class Game {
 
   /** close | stay | combat | continue */
   private applyEffect(effect: string): 'close' | 'stay' | 'combat' | 'continue' {
-    if (effect === 'end') return 'close';
+    if (effect === 'end') {
+      // Mark road cast talked when leaving their trees
+      const d = this.dialogueNpc;
+      if (d === 'wayside_monk') this.flags.talked_wayside_monk = true;
+      if (d === 'cart_widow') this.flags.talked_cart_widow = true;
+      if (d === 'ferry_idler') this.flags.talked_ferry_idler = true;
+      if (d === 'vine_boy') this.flags.talked_vine_boy = true;
+      if (d === 'leper_bell') this.flags.talked_leper_bell = true;
+      if (d === 'market_crier') this.flags.talked_market_crier = true;
+      return 'close';
+    }
+
+    if (effect === 'road_help_cart') {
+      if (!this.flags.road_help_cart) {
+        this.flags.road_help_cart = true;
+        this.adjustTrust(1);
+        this.toast('Axle braced. Column notices.');
+      }
+      this.flags.talked_cart_widow = true;
+      return 'continue';
+    }
 
     if (effect === 'warn_seal_break') {
       this.flags.warn_seal_break = true;
@@ -1524,7 +1579,7 @@ export class Game {
       this.maybeJournalDoneToast();
       this.persist();
       this.closeDialogue();
-      void this.enterHub(-1.2, -4.2);
+      void this.enterHub(3.5, -34.0);
       return 'stay';
     }
 

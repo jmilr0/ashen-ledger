@@ -20,11 +20,21 @@ export interface Stats {
   def: number;
 }
 
+/** Hub equip — hand weapon / body armor (docs/stats-equip-sheet.md). */
+export interface EquipSlots {
+  hand?: string;
+  body?: string;
+}
+
 export interface PartyMember {
   id: JobId;
   name: string;
   role: string;
   stats: Stats;
+  /** Job base ATK/DEF before gear (persisted so refreshEquip is stable). */
+  baseAtk: number;
+  baseDef: number;
+  equip: EquipSlots;
   recruited: boolean;
   /** Soft-fail for rest of Act I map. */
   outForAct?: boolean;
@@ -32,11 +42,30 @@ export interface PartyMember {
   bleedTicks?: number;
 }
 
+export type ItemSlot = 'hand' | 'body' | 'consumable' | 'quest';
+
 export interface Item {
   id: string;
   name: string;
   description: string;
   qty: number;
+  slot?: ItemSlot;
+  atkBonus?: number;
+  defBonus?: number;
+  /** Soft job preference — toast if mismatched, still allow. */
+  preferJobs?: JobId[];
+}
+
+/** World prop RMB: inspect / loot / use (docs/stats-equip-sheet.md). */
+export type InteractKind = 'inspect' | 'loot' | 'use';
+
+export interface WorldInteractable {
+  id: string;
+  kind: InteractKind;
+  label: string;
+  hint: string;
+  /** Optional inventory grant on loot (once). */
+  lootItemId?: string;
 }
 
 export interface DialogueChoice {

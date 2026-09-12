@@ -5,7 +5,13 @@ import {
   createDefaultParty,
   DEFAULT_FLAGS,
   DIALOGUES,
+  ensurePartyEquip,
+  ITEM_CATALOG,
+  JOB_NOTES,
+  JOB_PORTRAIT_COLOR,
+  makeItem,
   PLAYER_START,
+  refreshMemberEquip,
 } from './data';
 import { CombatSession, type CombatActionId } from './combat';
 import { buildJournal } from './journal';
@@ -21,10 +27,10 @@ import type {
   PartyMember,
   SaveData,
   Screen,
+  WorldInteractable,
 } from './types';
 import { SELECT_ORDER } from './types';
 import { World } from './world';
-import { JOB_PORTRAIT_COLOR } from './data';
 
 export class Game {
   private world: World | null = null;
@@ -45,8 +51,11 @@ export class Game {
   private lastPointerY = 0;
   private canvasHandlersBound = false;
   private controlledId: JobId = 'clerk';
+  /** Character sheet focus — may differ from controlled face. */
+  private sheetFocusId: JobId = 'clerk';
   private mapZone: MapZone = 'act1_road';
   private journalToastIds = new Set<string>();
+  private lootedProps = new Set<string>();
 
   constructor() {
     this.ui = document.getElementById('ui-root')!;
@@ -79,6 +88,10 @@ export class Game {
         if (this.screen === 'hub') this.world?.orbit(0.18);
       }
       if (e.key === 'Escape') {
+        if (document.getElementById('context-menu')) {
+          document.getElementById('context-menu')?.remove();
+          return;
+        }
         if (
           this.screen === 'party' ||
           this.screen === 'inventory' ||
@@ -150,7 +163,7 @@ export class Game {
         <button class="btn primary" id="btn-new">New Journey</button>
         <button class="btn" id="btn-continue" ${hasSave() ? '' : 'disabled'}>Continue</button>
       </div>
-      <p class="hint">LMB move · RMB talk / drag orbit · Q/R rotate · E/F interact · I inv · C party · J journal · H/? help · 1–5/Tab switch · Ctrl+S save</p>
+      <p class="hint">LMB move · RMB talk/loot/inspect · Q/R · E/F · I bag · C sheet · J journal · H help · 1–5/Tab · Ctrl+S</p>
     `;
     this.ui.appendChild(el);
     el.querySelector('#btn-new')!.addEventListener('click', () => this.newGame());
@@ -160,6 +173,9 @@ export class Game {
   private newGame(): void {
     this.party = createDefaultParty();
     this.inventory = createDefaultInventory();
+    ensurePartyEquip(this.party);
+    this.sheetFocusId = 'clerk';
+    this.lootedProps = new Set();
     this.flags = { ...DEFAULT_FLAGS };
     this.controlledId = 'clerk';
     this.mapZone = 'act1_road';
@@ -176,11 +192,19 @@ export class Game {
     }
     this.party = data.party;
     this.inventory = data.inventory;
+    ensurePartyEquip(this.party);
+    // Migrate inventory rows missing slot/bonus metadata
+    this.inventory = this.inventory.map((i) => {
+      const cat = ITEM_CATALOG[i.id];
+      return cat ? { ...cat, qty: i.qty } : i;
+    });
     this.flags = { ...DEFAULT_FLAGS, ...data.flags };
     this.storyBeat = data.storyBeat;
     this.mapZone = (data.mapZone || (this.flags.map_zone as MapZone) || 'act1_road') as MapZone;
     this.flags.map_zone = this.mapZone;
     this.controlledId = this.resolveControlled(data.controlledId);
+    this.sheetFocusId = this.controlledId;
+    this.lootedProps = new Set();
     this.refreshStoryBeatOnLoad();
     this.enterHub(data.playerX, data.playerZ);
   }
@@ -210,6 +234,7 @@ export class Game {
     canvas.addEventListener('pointerdown', (ev) => {
       if (this.screen !== 'hub' || !this.world) return;
       if (ev.button === 2) {
+        document.getElementById('context-menu')?.remove();
         const npc = this.world.pickNpc(ev.clientX, ev.clientY);
         if (npc) {
           this.openNpc(npc);
@@ -220,6 +245,11 @@ export class Game {
           this.talkPartyCompanion(job);
           return;
         }
+        const prop = this.world.pickInteractable(ev.clientX, ev.clientY);
+        if (prop) {
+          this.showPropContext(prop, ev.clientX, ev.clientY);
+          return;
+        }
         this.orbitDragging = true;
         this.lastPointerX = ev.clientX;
         this.lastPointerY = ev.clientY;
@@ -227,6 +257,7 @@ export class Game {
         return;
       }
       if (ev.button === 0) {
+        document.getElementById('context-menu')?.remove();
         const pt = this.world.screenToGround(ev.clientX, ev.clientY);
         if (pt) this.world.moveToWorld(pt);
       }
@@ -346,6 +377,7 @@ export class Game {
   }
 
   selectCompanion(id: JobId): void {
+    this.sheetFocusId = id;
     const m = this.party.find((p) => p.id === id);
     if (!m || !m.recruited || m.outForAct || m.stats.hp <= 0) {
       this.toast(`${id} unavailable.`);
@@ -442,7 +474,7 @@ export class Game {
       </div>
       <div class="objective panel">${this.storyBeat}<br/><span class="stats">carrier: ${carrier} · seal ${this.flags.seal_intact ? 'intact' : 'broken'} · pilgrim trust ${trust} · ${zoneLabel}</span></div>
       <div class="party-strip" id="party-strip"></div>
-      <div class="minimap-hint panel">LMB walk · RMB NPC / orbit · Q/R · E/F · 1–5/Tab · J journal · H help</div>
+      <div class="minimap-hint panel">LMB walk · RMB talk/loot/inspect · Q/R · E/F · C sheet · 1–5/Tab · J · H</div>
     `;
     this.ui.appendChild(hud);
     hud.querySelector('#hud-party')!.addEventListener('click', () => this.showParty());
@@ -484,7 +516,12 @@ export class Game {
       const el = btn as HTMLElement;
       el.addEventListener('click', () => {
         const id = el.dataset.job as JobId;
+        this.sheetFocusId = id;
         if (this.screen === 'hub') this.selectCompanion(id);
+        else if (this.screen === 'party') {
+          document.getElementById('party-panel')?.remove();
+          this.showParty();
+        }
       });
       el.addEventListener('contextmenu', (ev) => {
         ev.preventDefault();
@@ -505,11 +542,94 @@ export class Game {
   private tryInteract(): void {
     if (!this.world || this.screen !== 'hub') return;
     const n = this.world.nearestNpc();
-    if (!n) {
-      this.toast('Nothing nearby.');
+    if (n) {
+      this.openNpc(n);
       return;
     }
-    this.openNpc(n);
+    const prop = this.world.nearestInteractable();
+    if (prop) {
+      this.resolvePropAction(prop);
+      return;
+    }
+    this.toast('Nothing nearby.');
+  }
+
+  /** RMB context: Inspect / Loot / Use on world props. */
+  private showPropContext(prop: WorldInteractable, clientX: number, clientY: number): void {
+    document.getElementById('context-menu')?.remove();
+    const menu = document.createElement('div');
+    menu.id = 'context-menu';
+    menu.className = 'panel context-menu';
+    const kindLabel =
+      prop.kind === 'loot' ? 'Loot' : prop.kind === 'use' ? 'Use' : 'Inspect';
+    menu.innerHTML = `<div class="context-title">${prop.label}</div>
+      <button class="btn" data-act="primary">${kindLabel}</button>
+      <button class="btn" data-act="inspect">Inspect</button>
+      <button class="btn" data-act="close">Cancel</button>`;
+    const x = Math.min(clientX, window.innerWidth - 200);
+    const y = Math.min(clientY, window.innerHeight - 160);
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    this.ui.appendChild(menu);
+    menu.querySelector('[data-act="primary"]')!.addEventListener('click', () => {
+      menu.remove();
+      this.resolvePropAction(prop);
+    });
+    menu.querySelector('[data-act="inspect"]')!.addEventListener('click', () => {
+      menu.remove();
+      this.toast(prop.hint);
+    });
+    menu.querySelector('[data-act="close"]')!.addEventListener('click', () => menu.remove());
+  }
+
+  private resolvePropAction(prop: WorldInteractable): void {
+    if (prop.kind === 'inspect') {
+      this.toast(prop.hint);
+      return;
+    }
+    if (prop.kind === 'use') {
+      // Ferry rope → same gate as ferry NPC when possible
+      if (prop.id === 'ferry_rope') {
+        const ferry = this.world?.nearestNpc(3.5);
+        if (ferry && ferry.id === 'ferry') {
+          this.openNpc(ferry);
+          return;
+        }
+      }
+      this.toast(prop.hint);
+      return;
+    }
+    if (prop.kind === 'loot') {
+      if (this.lootedProps.has(prop.id)) {
+        this.toast('Already searched.');
+        return;
+      }
+      this.toast(prop.hint);
+      if (prop.lootItemId) {
+        this.grantLoot(prop.lootItemId);
+      }
+      this.lootedProps.add(prop.id);
+      this.world?.markInteractableLooted(prop.id);
+    }
+  }
+
+  private grantLoot(itemId: string): void {
+    const existing = this.inventory.find((i) => i.id === itemId);
+    if (existing) {
+      existing.qty += 1;
+      this.toast(`Took ${existing.name}.`);
+      return;
+    }
+    // Don't grant if already equipped on someone
+    for (const m of this.party) {
+      if (m.equip.hand === itemId || m.equip.body === itemId) {
+        this.toast('Already among the party.');
+        return;
+      }
+    }
+    const item = makeItem(itemId);
+    this.inventory.push(item);
+    this.toast(`Took ${item.name}.`);
   }
 
   private openNpc(n: NpcDef): void {
@@ -1809,38 +1929,89 @@ export class Game {
     document.getElementById('party-panel')?.remove();
     const panel = document.createElement('div');
     panel.id = 'party-panel';
-    panel.className = 'panel';
-    const members = SELECT_ORDER.map((id) => this.party.find((p) => p.id === id)!)
+    panel.className = 'panel sheet-panel';
+    const focus =
+      this.party.find((p) => p.id === this.sheetFocusId) ??
+      this.party.find((p) => p.id === this.controlledId)!;
+    this.sheetFocusId = focus.id;
+    refreshMemberEquip(focus);
+
+    const list = SELECT_ORDER.map((id) => this.party.find((p) => p.id === id)!)
       .map((p) => {
-        const hpPct = Math.round((Math.max(0, p.stats.hp) / p.stats.maxHp) * 100);
-        const flags = [
-          p.id === this.controlledId ? 'active speaker' : '',
-          p.outForAct ? 'out for Act' : '',
-          p.bleeding ? 'bleeding' : '',
-          p.stats.hp <= 0 && !p.outForAct ? 'downed' : '',
-          this.flags.chest_carrier === p.id ? 'carries bag' : '',
+        const status = [
+          p.id === this.controlledId ? 'face' : '',
+          p.outForAct ? 'out' : '',
+          p.bleeding ? 'bleed' : '',
+          p.stats.hp <= 0 && !p.outForAct ? 'down' : '',
         ]
           .filter(Boolean)
           .join(' · ');
-        const canSelect = p.recruited && !p.outForAct && p.stats.hp > 0;
-        return `<div class="member-card${p.id === this.controlledId ? ' controlled' : ''}">
-          <div>
-            <strong>${p.name}</strong>
-            <div class="stats">${p.role} · ATK ${p.stats.atk} DEF ${p.stats.def}${flags ? ' · ' + flags : ''}</div>
-            <div class="bar"><span style="width:${hpPct}%"></span></div>
-          </div>
-          <div class="stats">HP ${p.stats.hp}/${p.stats.maxHp}<br/>
-          ${canSelect ? `<button class="btn" data-face="${p.id}">Set face</button>` : '<span class="stub-note">unavailable</span>'}
-          </div>
-        </div>`;
+        return `<button class="sheet-list-btn${p.id === focus.id ? ' selected' : ''}${p.id === this.controlledId ? ' controlled' : ''}" data-sheet="${p.id}">
+          <strong>${p.name}</strong>
+          <span class="stats">${p.role} · HP ${p.stats.hp}/${p.stats.maxHp}${status ? ' · ' + status : ''}</span>
+        </button>`;
       })
       .join('');
+
+    const handName = focus.equip.hand ? ITEM_CATALOG[focus.equip.hand]?.name ?? focus.equip.hand : '—';
+    const bodyName = focus.equip.body ? ITEM_CATALOG[focus.equip.body]?.name ?? focus.equip.body : '—';
+    const statusLine = [
+      focus.outForAct ? 'out for Act' : '',
+      focus.bleeding ? 'bleeding' : '',
+      focus.stats.hp <= 0 && !focus.outForAct ? 'downed' : '',
+      focus.id === this.controlledId ? 'hub face' : '',
+      this.flags.chest_carrier === focus.id ? 'carries bag' : '',
+    ]
+      .filter(Boolean)
+      .join(' · ') || 'steady';
+
+    const equipable = this.inventory.filter(
+      (i) => i.slot === 'hand' || i.slot === 'body'
+    );
+    const equipRows = equipable.length
+      ? equipable
+          .map((i) => {
+            const slot = i.slot === 'body' ? 'body' : 'hand';
+            return `<div class="item-row"><div><strong>${i.name}</strong> ×${i.qty}<br/>
+              <span class="stats">${i.description}</span></div>
+              <button class="btn" data-equip="${i.id}" data-slot="${slot}">Equip</button></div>`;
+          })
+          .join('')
+      : '<em class="stub-note">No spare hand/body gear in the shared bag.</em>';
+
     const canRest = !this.combat;
-    panel.innerHTML = `<h2>Party — The Broken Seal</h2>
-      <p class="stats" style="margin-top:0.35rem;opacity:0.75">Formation L→R: Guide · Sergeant · Convers · Clerk · Surgeon. Face = hub controlled (1–5 / Tab). Bag ≠ face.</p>
-      <div class="members">${members}</div>
+    const canFace = focus.recruited && !focus.outForAct && focus.stats.hp > 0;
+    const hpPct = Math.round((Math.max(0, focus.stats.hp) / focus.stats.maxHp) * 100);
+
+    panel.innerHTML = `<h2>Character — ${focus.name}</h2>
+      <p class="stats" style="margin-top:0.35rem;opacity:0.75">C sheet · portraits pick focus · 1–5 face. Bag ≠ face. Shared consumables stay in I.</p>
+      <div class="sheet-layout">
+        <div class="sheet-list">${list}</div>
+        <div class="sheet-detail">
+          <div class="member-card controlled">
+            <div>
+              <strong>${focus.name}</strong>
+              <div class="stats">${focus.role} · ${JOB_NOTES[focus.id]}</div>
+              <div class="stats">Status: ${statusLine}</div>
+              <div class="bar"><span style="width:${hpPct}%"></span></div>
+            </div>
+            <div class="stats">HP ${focus.stats.hp}/${focus.stats.maxHp}<br/>
+              ATK ${focus.stats.atk} · DEF ${focus.stats.def}<br/>
+              base ${focus.baseAtk}/${focus.baseDef}</div>
+          </div>
+          <div class="equip-slots">
+            <div class="equip-row"><span>Hand</span><strong>${handName}</strong>
+              ${focus.equip.hand ? `<button class="btn" data-unequip="hand">Unequip</button>` : ''}</div>
+            <div class="equip-row"><span>Body</span><strong>${bodyName}</strong>
+              ${focus.equip.body ? `<button class="btn" data-unequip="body">Unequip</button>` : ''}</div>
+          </div>
+          <h3 style="margin-top:0.75rem;font-size:0.95rem;color:#d4a574">Equip from bag</h3>
+          <div class="items">${equipRows}</div>
+        </div>
+      </div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
-        ${canRest ? `<button class="btn" id="party-rest" title="Elias works. Time and linen.">Rest — Elias works. Time and linen.</button>` : ''}
+        ${canFace ? `<button class="btn" id="party-face">Set hub face</button>` : ''}
+        ${canRest ? `<button class="btn" id="party-rest" title="Elias works. Time and linen.">Rest — Elias works</button>` : ''}
         <button class="btn" id="close-party">Close</button>
       </div>`;
     this.ui.appendChild(panel);
@@ -1850,13 +2021,81 @@ export class Game {
       panel.remove();
       this.showParty();
     });
-    panel.querySelectorAll('[data-face]').forEach((btn) => {
+    panel.querySelector('#party-face')?.addEventListener('click', () => {
+      this.selectCompanion(focus.id);
+      panel.remove();
+      this.showParty();
+    });
+    panel.querySelectorAll('[data-sheet]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        this.selectCompanion((btn as HTMLElement).dataset.face as JobId);
+        this.sheetFocusId = (btn as HTMLElement).dataset.sheet as JobId;
         panel.remove();
         this.showParty();
       });
     });
+    panel.querySelectorAll('[data-unequip]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.unequipSlot(focus.id, (btn as HTMLElement).dataset.unequip as 'hand' | 'body');
+        panel.remove();
+        this.showParty();
+      });
+    });
+    panel.querySelectorAll('[data-equip]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const el = btn as HTMLElement;
+        this.equipItem(focus.id, el.dataset.equip!, el.dataset.slot as 'hand' | 'body');
+        panel.remove();
+        this.showParty();
+      });
+    });
+  }
+
+  private equipItem(job: JobId, itemId: string, slot: 'hand' | 'body'): void {
+    const member = this.party.find((p) => p.id === job);
+    const item = this.inventory.find((i) => i.id === itemId);
+    if (!member || !item || item.qty < 1) return;
+    const cat = ITEM_CATALOG[itemId];
+    if (cat?.preferJobs && !cat.preferJobs.includes(job)) {
+      this.toast(`${member.name} can wear it — not their usual kit.`);
+    }
+    // Unique: unequip from anyone else
+    for (const m of this.party) {
+      if (m.equip.hand === itemId) {
+        m.equip.hand = undefined;
+        refreshMemberEquip(m);
+      }
+      if (m.equip.body === itemId) {
+        m.equip.body = undefined;
+        refreshMemberEquip(m);
+      }
+    }
+    // Return currently worn piece to bag
+    const prev = member.equip[slot];
+    if (prev) {
+      const existing = this.inventory.find((i) => i.id === prev);
+      if (existing) existing.qty += 1;
+      else this.inventory.push(makeItem(prev));
+    }
+    member.equip[slot] = itemId;
+    item.qty -= 1;
+    if (item.qty <= 0) this.inventory = this.inventory.filter((i) => i.qty > 0);
+    refreshMemberEquip(member);
+    this.toast(`${member.name} equips ${cat?.name ?? itemId}.`);
+    this.refreshPartyStrip();
+  }
+
+  private unequipSlot(job: JobId, slot: 'hand' | 'body'): void {
+    const member = this.party.find((p) => p.id === job);
+    if (!member) return;
+    const prev = member.equip[slot];
+    if (!prev) return;
+    member.equip[slot] = undefined;
+    const existing = this.inventory.find((i) => i.id === prev);
+    if (existing) existing.qty += 1;
+    else this.inventory.push(makeItem(prev));
+    refreshMemberEquip(member);
+    this.toast(`Unequipped ${ITEM_CATALOG[prev]?.name ?? prev}.`);
+    this.refreshPartyStrip();
   }
 
   private showJournal(): void {
@@ -1884,21 +2123,31 @@ export class Game {
 
   private showInventory(): void {
     this.screen = 'inventory';
+    document.getElementById('inventory-panel')?.remove();
     const panel = document.createElement('div');
     panel.id = 'inventory-panel';
     panel.className = 'panel';
+    const focus =
+      this.party.find((p) => p.id === this.sheetFocusId) ??
+      this.party.find((p) => p.id === this.controlledId)!;
     const items = this.inventory
-      .map(
-        (i) => `<div class="item-row"><div><strong>${i.name}</strong> ×${i.qty}<br/>
-        <span class="stats">${i.description}</span></div>
-        ${
-          i.id === 'bandages' || (i.id === 'true_letter' && this.flags.seal_intact)
+      .map((i) => {
+        const useBtn =
+          i.id === 'bandages' || i.id === 'canal_salve' || (i.id === 'true_letter' && this.flags.seal_intact)
             ? `<button class="btn" data-use="${i.id}">${i.id === 'true_letter' ? 'Peek seal' : 'Use'}</button>`
-            : ''
-        }</div>`
-      )
+            : '';
+        const equipBtn =
+          i.slot === 'hand' || i.slot === 'body'
+            ? `<button class="btn" data-equip="${i.id}" data-slot="${i.slot}">Equip → ${focus.name.split(' ').pop()}</button>`
+            : '';
+        return `<div class="item-row"><div><strong>${i.name}</strong> ×${i.qty}<br/>
+        <span class="stats">${i.description}</span></div>
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap">${useBtn}${equipBtn}</div></div>`;
+      })
       .join('');
-    panel.innerHTML = `<h2>Inventory</h2><div class="items">${items || '<em>Empty</em>'}</div>
+    panel.innerHTML = `<h2>Inventory — shared bag</h2>
+      <p class="stats" style="margin-top:0.35rem;opacity:0.75">Equip goes to <strong>${focus.name}</strong> (sheet focus). Open C to change focus / see slots.</p>
+      <div class="items">${items || '<em>Empty</em>'}</div>
       <button class="btn" id="close-inv">Close</button>`;
     this.ui.appendChild(panel);
     panel.querySelector('#close-inv')!.addEventListener('click', () => this.closeOverlay());
@@ -1909,19 +2158,30 @@ export class Game {
         this.showInventory();
       });
     });
+    panel.querySelectorAll('[data-equip]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const el = btn as HTMLElement;
+        this.equipItem(focus.id, el.dataset.equip!, el.dataset.slot as 'hand' | 'body');
+        panel.remove();
+        this.showInventory();
+      });
+    });
   }
 
   private useItem(id: string): void {
     const item = this.inventory.find((i) => i.id === id);
     if (!item || item.qty < 1) return;
-    if (id === 'bandages') {
-      const lead = this.party.find((p) => p.id === 'clerk' && !p.outForAct) ?? this.party.find((p) => !p.outForAct)!;
-      lead.stats.hp = Math.min(lead.stats.maxHp, lead.stats.hp + 8);
+    if (id === 'bandages' || id === 'canal_salve') {
+      const lead =
+        this.party.find((p) => p.id === this.sheetFocusId && !p.outForAct) ??
+        this.party.find((p) => p.id === 'clerk' && !p.outForAct) ??
+        this.party.find((p) => !p.outForAct)!;
+      lead.stats.hp = Math.min(lead.stats.maxHp, lead.stats.hp + (id === 'canal_salve' ? 4 : 8));
       lead.bleeding = false;
       lead.bleedTicks = 0;
       item.qty -= 1;
       if (item.qty <= 0) this.inventory = this.inventory.filter((i) => i.qty > 0);
-      this.toast(`Boiled linen on ${lead.name}.`);
+      this.toast(`${item.name} on ${lead.name}.`);
       return;
     }
     if (id === 'true_letter') {
@@ -1935,6 +2195,7 @@ export class Game {
     document.getElementById('journal-panel')?.remove();
     document.getElementById('help-panel')?.remove();
     document.getElementById('epilogue-panel')?.remove();
+    document.getElementById('context-menu')?.remove();
     this.screen = 'hub';
     this.refreshPartyStrip();
   }
@@ -1949,7 +2210,8 @@ export class Game {
     panel.innerHTML = `<h2>The Broken Seal — five jobs. No miracles.</h2>
       <ul class="help-list">
         <li><strong>1–5 / Tab</strong> — who’s in front. Bag pip isn’t the face.</li>
-        <li><strong>LMB</strong> move · <strong>RMB</strong> talk / orbit · <strong>Q/R</strong> turn the view</li>
+        <li><strong>LMB</strong> move · <strong>RMB</strong> talk / loot·inspect props / orbit · <strong>Q/R</strong> turn the view</li>
+        <li><strong>C</strong> character sheet (stats + equip) · <strong>I</strong> shared bag</li>
         <li><strong>J</strong> journal (flags don’t lie politely)</li>
         <li><strong>Space</strong> — LIVE / PAUSED. Queue orders while paused; Hold, then Cut.</li>
         <li><strong>Rest</strong> — Elias and linen, once per beat. Not a spell.</li>

@@ -1,4 +1,4 @@
-import type { DialogueNode, Item, MapZone, NpcDef, PartyMember } from './types';
+import type { DialogueNode, Item, JobId, MapZone, NpcDef, PartyMember } from './types';
 
 export const PLAYER_START = { x: -1.0, z: 30.5 }; // Fontfroide yard (~−1.2 m, +36.6 m)
 export const CORBIERES_START = { x: 0, z: 2 };
@@ -12,14 +12,162 @@ export const JOB_PORTRAIT_COLOR: Record<string, string> = {
   surgeon: '#4a5848',
 };
 
+/** Job blurbs for the character sheet. */
+export const JOB_NOTES: Record<JobId, string> = {
+  guide: 'Routes, loft shots, village lies. Prefers a crossbow in hand.',
+  sergeant: 'Front rank. Holds doors and ropes. Prefers spear and mail.',
+  convers: 'Locks, wagons, Cut rope. Prefers a club.',
+  clerk: 'Seals, badges, gate talk. Prefers a staff.',
+  surgeon: 'Stabilize and linen. Hands free of steel when possible.',
+};
+
+/** Catalog for equip bonuses (docs/stats-equip-sheet.md). */
+export const ITEM_CATALOG: Record<string, Omit<Item, 'qty'>> = {
+  true_letter: {
+    id: 'true_letter',
+    name: 'True Sealed Letter',
+    description: 'For the Narbonne agent. Break the seal to peek and you become the next forger.',
+    slot: 'quest',
+  },
+  splinter: {
+    id: 'splinter',
+    name: 'Relic Splinter',
+    description: 'Sold as a saint’s staff — likely pine or stolen timber.',
+    slot: 'quest',
+  },
+  false_seal: {
+    id: 'false_seal',
+    name: 'Near-True Lead Seal',
+    description: 'Almost a living pope’s die — wrong month / rim name. Fools a crowd.',
+    slot: 'quest',
+  },
+  bandages: {
+    id: 'bandages',
+    name: 'Boiled Linen',
+    description: 'Between-scene wrap. Surgeon prefers Stabilize in a fight.',
+    slot: 'consumable',
+  },
+  spear: {
+    id: 'spear',
+    name: 'Household Spear',
+    description: 'Ash shaft, iron head. Front-rank thrust.',
+    slot: 'hand',
+    atkBonus: 2,
+    preferJobs: ['sergeant'],
+  },
+  club: {
+    id: 'club',
+    name: 'Oak Club',
+    description: 'Wagon timber with a nail. Convers work.',
+    slot: 'hand',
+    atkBonus: 1,
+    preferJobs: ['convers'],
+  },
+  staff: {
+    id: 'staff',
+    name: 'Clerk’s Staff',
+    description: 'Travel pole — more ward than wound.',
+    slot: 'hand',
+    defBonus: 1,
+    preferJobs: ['clerk'],
+  },
+  crossbow: {
+    id: 'crossbow',
+    name: 'Light Crossbow',
+    description: 'Guide loft-work. Bolt flavor in combat.',
+    slot: 'hand',
+    atkBonus: 2,
+    preferJobs: ['guide'],
+  },
+  inkknife: {
+    id: 'inkknife',
+    name: 'Inkknife',
+    description: 'Seal work and a last resort poke.',
+    slot: 'hand',
+    atkBonus: 1,
+    preferJobs: ['clerk'],
+  },
+  mail: {
+    id: 'mail',
+    name: 'Worn Mail',
+    description: 'Rusty rings. Still better than wool.',
+    slot: 'body',
+    defBonus: 2,
+    preferJobs: ['sergeant'],
+  },
+  cloak: {
+    id: 'cloak',
+    name: 'Travel Cloak',
+    description: 'Keeps the wet off. Thin protection.',
+    slot: 'body',
+    defBonus: 1,
+    preferJobs: ['guide', 'surgeon'],
+  },
+  habit: {
+    id: 'habit',
+    name: 'Wool Habit',
+    description: 'Abbey cloth. Turns a glancing cut.',
+    slot: 'body',
+    defBonus: 1,
+    preferJobs: ['clerk', 'convers', 'surgeon'],
+  },
+  canal_salve: {
+    id: 'canal_salve',
+    name: 'Canal Salve',
+    description: 'Bitter paste for road scrapes. Shared kit.',
+    slot: 'consumable',
+  },
+  spare_kit: {
+    id: 'spare_kit',
+    name: 'Field Kit',
+    description: 'Twine, needle, and a dry scrap of linen.',
+    slot: 'quest',
+  },
+};
+
+export function makeItem(id: string, qty = 1): Item {
+  const base = ITEM_CATALOG[id];
+  if (!base) return { id, name: id, description: '', qty };
+  return { ...base, qty };
+}
+
+/** Apply hand/body bonuses onto stats from baseAtk/baseDef. */
+export function refreshMemberEquip(m: PartyMember): void {
+  let atk = m.baseAtk;
+  let def = m.baseDef;
+  for (const slot of ['hand', 'body'] as const) {
+    const id = m.equip[slot];
+    if (!id) continue;
+    const cat = ITEM_CATALOG[id];
+    if (!cat) continue;
+    atk += cat.atkBonus ?? 0;
+    def += cat.defBonus ?? 0;
+  }
+  m.stats.atk = atk;
+  m.stats.def = def;
+}
+
+/** Migrate older saves missing base/equip fields. */
+export function ensurePartyEquip(party: PartyMember[]): void {
+  for (const m of party) {
+    if (m.baseAtk == null) m.baseAtk = m.stats.atk;
+    if (m.baseDef == null) m.baseDef = m.stats.def;
+    if (!m.equip) m.equip = {};
+    refreshMemberEquip(m);
+  }
+}
+
 /** Default formation L→R facing: guide · sergeant · convers · clerk · surgeon */
 export function createDefaultParty(): PartyMember[] {
-  return [
+  const party: PartyMember[] = [
     {
       id: 'guide',
       name: 'Catalana',
       role: 'Guide',
       stats: { hp: 18, maxHp: 18, atk: 6, def: 2 },
+      baseAtk: 6,
+      baseDef: 2,
+      equip: { hand: 'crossbow', body: 'cloak' },
       recruited: true,
     },
     {
@@ -27,6 +175,9 @@ export function createDefaultParty(): PartyMember[] {
       name: 'Sergeant Guillem',
       role: 'Sergeant',
       stats: { hp: 28, maxHp: 28, atk: 8, def: 5 },
+      baseAtk: 8,
+      baseDef: 5,
+      equip: { hand: 'spear', body: 'mail' },
       recruited: true,
     },
     {
@@ -34,6 +185,9 @@ export function createDefaultParty(): PartyMember[] {
       name: 'Brother Peire',
       role: 'Convers',
       stats: { hp: 22, maxHp: 22, atk: 5, def: 3 },
+      baseAtk: 5,
+      baseDef: 3,
+      equip: { hand: 'club', body: 'habit' },
       recruited: true,
     },
     {
@@ -41,6 +195,9 @@ export function createDefaultParty(): PartyMember[] {
       name: 'Arnau the Clerk',
       role: 'Clerk',
       stats: { hp: 16, maxHp: 16, atk: 3, def: 2 },
+      baseAtk: 3,
+      baseDef: 2,
+      equip: { hand: 'staff', body: 'habit' },
       recruited: true,
     },
     {
@@ -48,37 +205,26 @@ export function createDefaultParty(): PartyMember[] {
       name: 'Master Elias',
       role: 'Surgeon',
       stats: { hp: 14, maxHp: 14, atk: 2, def: 2 },
+      baseAtk: 2,
+      baseDef: 2,
+      equip: { body: 'cloak' },
       recruited: true,
     },
   ];
+  for (const m of party) refreshMemberEquip(m);
+  return party;
 }
 
+/** Shared pool — equipped gear lives on PartyMember.equip, not here. */
 export function createDefaultInventory(): Item[] {
   return [
-    {
-      id: 'true_letter',
-      name: 'True Sealed Letter',
-      description: 'For the Narbonne agent. Break the seal to peek and you become the next forger.',
-      qty: 1,
-    },
-    {
-      id: 'splinter',
-      name: 'Relic Splinter',
-      description: 'Sold as a saint’s staff — likely pine or stolen timber.',
-      qty: 1,
-    },
-    {
-      id: 'false_seal',
-      name: 'Near-True Lead Seal',
-      description: 'Almost a living pope’s die — wrong month / rim name. Fools a crowd.',
-      qty: 1,
-    },
-    {
-      id: 'bandages',
-      name: 'Boiled Linen',
-      description: 'Between-scene wrap. Surgeon prefers Stabilize in a fight.',
-      qty: 2,
-    },
+    makeItem('true_letter'),
+    makeItem('splinter'),
+    makeItem('false_seal'),
+    makeItem('bandages', 2),
+    makeItem('inkknife'),
+    makeItem('canal_salve'),
+    makeItem('spare_kit'),
   ];
 }
 

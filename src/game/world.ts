@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { npcsForZone } from './data';
 import { fitToHeight, loadModel, tintMeshes } from './assets';
-import type { JobId, MapZone, NpcDef } from './types';
+import type { JobId, MapZone, NpcDef, WorldInteractable } from './types';
 import { SELECT_ORDER } from './types';
 
 const TILE = 1.2;
@@ -141,6 +141,8 @@ export class World {
   private playerMesh!: THREE.Group;
   private npcMeshes = new Map<string, THREE.Group>();
   private followerMeshes = new Map<JobId, THREE.Group>();
+  /** Prop RMB targets (inspect / loot / use). */
+  private interactables = new Map<string, { mesh: THREE.Object3D; def: WorldInteractable }>();
   private pathTarget: THREE.Vector3 | null = null;
   /** Click-intent yaw (atan2 to destination). Blend while moving. */
   private intentYaw: number | null = null;
@@ -788,7 +790,7 @@ export class World {
     return g;
   }
 
-    private makeChestPlaceholder(): THREE.Group {
+  private makeChestPlaceholder(): THREE.Group {
     const g = new THREE.Group();
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 0.4, 0.45),
@@ -2119,6 +2121,8 @@ export class World {
         this.addBoxCollider(lx, lz, 0.85, 0.65);
       }
     }
+
+    this.seedWorldInteractables();
   }
 
   private async upgradeNpc(
@@ -2368,6 +2372,285 @@ export class World {
     const hits = this.raycaster.intersectObject(this.ground);
     if (!hits.length) return null;
     return hits[0].point.clone();
+  }
+
+  /** Tag a mesh for RMB inspect/loot/use. */
+  private registerInteractable(
+    mesh: THREE.Object3D,
+    def: WorldInteractable,
+    x?: number,
+    z?: number
+  ): void {
+    if (x != null && z != null) mesh.position.set(x, mesh.position.y, z);
+    mesh.userData.interactId = def.id;
+    this.interactables.set(def.id, { mesh, def });
+    if (!mesh.parent) this.scene.add(mesh);
+  }
+
+  /**
+   * Hub props for RMB context (docs/stats-equip-sheet.md).
+   * NPCs stay talk via pickNpc; these cover chests, cavity, markers, loot piles.
+   */
+  private seedWorldInteractables(): void {
+    this.interactables.clear();
+    // Clear prior interact-tagged meshes we own
+    const doomed: THREE.Object3D[] = [];
+    this.scene.traverse((o) => {
+      if (o.name.startsWith('interact-')) doomed.push(o);
+    });
+    for (const o of doomed) o.parent?.remove(o);
+
+    const tagNamed = (
+      name: string,
+      def: WorldInteractable,
+      fallback: () => { x: number; z: number; mesh?: THREE.Object3D }
+    ) => {
+      let found: THREE.Object3D | null = null;
+      this.scene.traverse((o) => {
+        if (!found && o.name === name) found = o;
+      });
+      if (found) {
+        this.registerInteractable(found, def);
+        return;
+      }
+      const fb = fallback();
+      if (fb.mesh) {
+        this.registerInteractable(fb.mesh, def, fb.x, fb.z);
+      }
+    };
+
+    if (this.zone === 'act1_road') {
+      const cellarer = this.activeNpcs.find((n) => n.id === 'cellarer');
+      const cx = (cellarer?.x ?? -3.2) * TILE;
+      const cz = (cellarer?.z ?? -1.2) * TILE;
+      const chest = this.makeChestPlaceholder();
+      chest.name = 'interact-fontfroide-chest';
+      this.registerInteractable(
+        chest,
+        {
+          id: 'fontfroide_chest',
+          kind: 'loot',
+          label: 'Fontfroide chest',
+          hint: 'Iron bands, abbey wax. The bag already walks with you — only dust and a spare needle left.',
+          lootItemId: 'spare_kit',
+        },
+        cx + 0.85,
+        cz + 0.35
+      );
+
+      tagNamed(
+        'mold-cavity-art',
+        {
+          id: 'mold_cavity',
+          kind: 'inspect',
+          label: 'Mold cavity',
+          hint: 'A hollow in the bench where a die sat warm. Lead dust. Wrong month still stains the rim.',
+        },
+        () => {
+          const mold = this.activeNpcs.find((n) => n.id === 'mold');
+          const mx = ((mold?.x ?? -2.0) * TILE) + 0.55;
+          const mz = ((mold?.z ?? -3.5) * TILE) - 0.35;
+          const stub = new THREE.Mesh(
+            new THREE.BoxGeometry(0.55, 0.35, 0.45),
+            new THREE.MeshStandardMaterial({ color: 0x3a3020, roughness: 0.9 })
+          );
+          stub.position.y = 0.18;
+          const g = new THREE.Group();
+          g.add(stub);
+          g.name = 'interact-mold-cavity';
+          return { x: mx, z: mz, mesh: g };
+        }
+      );
+
+      tagNamed(
+        'mile-marker-art',
+        {
+          id: 'mile_marker',
+          kind: 'inspect',
+          label: 'Mile marker',
+          hint: 'Worn stone. Fontfroide behind, Narbonne ahead — if the road still means that.',
+        },
+        () => {
+          const bandits = this.activeNpcs.find((n) => n.id === 'bandits');
+          const bx = ((bandits?.x ?? 3.2) * TILE) - 1.1;
+          const bz = ((bandits?.z ?? -3.8) * TILE) + 0.8;
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.1, 1.1, 8),
+            new THREE.MeshStandardMaterial({ color: 0x6a6860, roughness: 0.95 })
+          );
+          post.position.y = 0.55;
+          const g = new THREE.Group();
+          g.add(post);
+          g.name = 'interact-mile-marker';
+          return { x: bx, z: bz, mesh: g };
+        }
+      );
+
+      // Ambush loot pile / corpse kit
+      const bandits = this.activeNpcs.find((n) => n.id === 'bandits');
+      const lx = ((bandits?.x ?? 3.2) * TILE) + 1.1;
+      const lz = ((bandits?.z ?? -3.8) * TILE) + 0.6;
+      let lootMesh: THREE.Object3D | null = null;
+      this.scene.traverse((o) => {
+        if (!lootMesh && (o.name === 'ruin-debris-art' || o.name === 'pilgrim-bundle-art')) {
+          const dx = o.position.x - lx;
+          const dz = o.position.z - lz;
+          if (Math.hypot(dx, dz) < 8) lootMesh = o;
+        }
+      });
+      if (!lootMesh) {
+        const pile = new THREE.Group();
+        const a = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 0.2, 0.4),
+          new THREE.MeshStandardMaterial({ color: 0x3a3428, roughness: 0.95 })
+        );
+        a.position.y = 0.1;
+        const b = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 8, 6),
+          new THREE.MeshStandardMaterial({ color: 0x4a4030, roughness: 0.9 })
+        );
+        b.position.set(0.15, 0.22, 0.05);
+        pile.add(a, b);
+        pile.name = 'interact-ambush-loot';
+        lootMesh = pile;
+        lootMesh.position.set(lx, 0, lz);
+        this.scene.add(lootMesh);
+      }
+      this.registerInteractable(lootMesh, {
+        id: 'ambush_loot',
+        kind: 'loot',
+        label: 'Loot pile',
+        hint: 'Torn badges and a wet purse. Nothing holy — a salve tin somebody dropped.',
+        lootItemId: 'canal_salve',
+      });
+
+      tagNamed(
+        'burial-gate-art',
+        {
+          id: 'burial_gate',
+          kind: 'inspect',
+          label: 'Burial gate',
+          hint: 'Locked iron. The parish keeps its dead from the road — and the road from its dead.',
+        },
+        () => {
+          const parish = this.activeNpcs.find((n) => n.id === 'parish');
+          const px = ((parish?.x ?? 2.5) * TILE) + 1.6;
+          const pz = ((parish?.z ?? 8) * TILE) - 0.4;
+          const door = this.makeDoorPlaceholder(0x4a4840);
+          door.name = 'interact-burial-gate';
+          return { x: px, z: pz, mesh: door };
+        }
+      );
+
+      // Ferry rope — inspect flavor; talk still via ferry NPC
+      const ferry = this.npcMeshes.get('ferry');
+      if (ferry) {
+        this.registerInteractable(ferry, {
+          id: 'ferry_rope',
+          kind: 'use',
+          label: 'Ferry rope',
+          hint: 'Wet hemp under strain. Convers Cut; Sergeant Hold — or swim with the letter.',
+        });
+      }
+
+      tagNamed(
+        'wayside-cross-art',
+        {
+          id: 'wayside_cross',
+          kind: 'inspect',
+          label: 'Wayside cross',
+          hint: 'Wood gone grey. Pilgrims touch it; clerks count the cracks.',
+        },
+        () => ({ x: 0, z: 0 })
+      );
+    }
+
+    if (this.zone === 'act3_close' || this.zone === 'corbieres') {
+      tagNamed(
+        'leper-bell-post-art',
+        {
+          id: 'leper_bell',
+          kind: 'inspect',
+          label: 'Leper bell',
+          hint: 'Iron tongue for the house of outcasts. Ring only if you mean the road to hear.',
+        },
+        () => ({ x: 0, z: 0 })
+      );
+      // Splinter / altar inspect stubs when meshes exist
+      this.scene.traverse((o) => {
+        if (o.name === 'splinter-plinth-art' || o.name.includes('false-altar') || o.name === 'false-altar-art') {
+          if (!this.interactables.has('splinter_plinth')) {
+            this.registerInteractable(o, {
+              id: 'splinter_plinth',
+              kind: 'inspect',
+              label: 'Splinter plinth',
+              hint: 'A saint’s staff sold by the inch. Pine under gilt dust.',
+            });
+          }
+        }
+      });
+    }
+  }
+
+  pickInteractable(clientX: number, clientY: number): WorldInteractable | null {
+    this.pointer.x = (clientX / window.innerWidth) * 2 - 1;
+    this.pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const meshes: THREE.Object3D[] = [];
+    for (const { mesh } of this.interactables.values()) {
+      if (mesh.visible !== false) meshes.push(mesh);
+    }
+    if (meshes.length) {
+      const hits = this.raycaster.intersectObjects(meshes, true);
+      if (hits.length) {
+        let obj: THREE.Object3D | null = hits[0].object;
+        while (obj) {
+          if (obj.userData?.interactId) {
+            const id = obj.userData.interactId as string;
+            return this.interactables.get(id)?.def ?? null;
+          }
+          obj = obj.parent;
+        }
+      }
+    }
+    const pt = this.screenToGround(clientX, clientY);
+    if (!pt) return null;
+    const maxD = 1.6 * 1.2;
+    let best: WorldInteractable | null = null;
+    let bestD = maxD;
+    for (const { mesh, def } of this.interactables.values()) {
+      if (mesh.visible === false) continue;
+      const d = Math.hypot(mesh.position.x - pt.x, mesh.position.z - pt.z);
+      if (d < bestD) {
+        bestD = d;
+        best = def;
+      }
+    }
+    return best;
+  }
+
+  nearestInteractable(maxDist = 1.6 * 1.2): WorldInteractable | null {
+    let best: WorldInteractable | null = null;
+    let bestD = maxDist;
+    const px = this.playerMesh.position.x;
+    const pz = this.playerMesh.position.z;
+    for (const { mesh, def } of this.interactables.values()) {
+      if (mesh.visible === false) continue;
+      const d = Math.hypot(mesh.position.x - px, mesh.position.z - pz);
+      if (d < bestD) {
+        bestD = d;
+        best = def;
+      }
+    }
+    return best;
+  }
+
+  markInteractableLooted(id: string): void {
+    const entry = this.interactables.get(id);
+    if (!entry) return;
+    entry.def.lootItemId = undefined;
+    entry.def.kind = 'inspect';
+    entry.def.hint = entry.def.hint + ' (already searched)';
   }
 
   pickNpc(clientX: number, clientY: number): NpcDef | null {

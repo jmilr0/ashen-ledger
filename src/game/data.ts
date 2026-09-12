@@ -123,6 +123,50 @@ export const ITEM_CATALOG: Record<string, Omit<Item, 'qty'>> = {
     description: 'Twine, needle, and a dry scrap of linen.',
     slot: 'quest',
   },
+  badge_scrap: {
+    id: 'badge_scrap',
+    name: 'Torn Badge Strap',
+    description: 'Wrong die for the leather. Proof of borrowed colors.',
+    slot: 'quest',
+  },
+  chancery_scrap: {
+    id: 'chancery_scrap',
+    name: 'Practice Hand Scrap',
+    description: 'Burnt drill of a papal rim. Useful at Narbonne if the mold is gone.',
+    slot: 'quest',
+  },
+  travel_rations: {
+    id: 'travel_rations',
+    name: 'Travel Rations',
+    description: 'Dried fish and bread. Keeps a column quiet for a day.',
+    slot: 'consumable',
+  },
+  bitter_herbs: {
+    id: 'bitter_herbs',
+    name: 'Bitter Herbs',
+    description: 'For linen boils and stomachs. Not a miracle.',
+    slot: 'consumable',
+  },
+  copper_coin: {
+    id: 'copper_coin',
+    name: 'Copper Deniers',
+    description: 'Emergency coin from a wayside box.',
+    slot: 'quest',
+  },
+  blunt_knife: {
+    id: 'blunt_knife',
+    name: 'Blunt Knife',
+    description: 'More tool than weapon. Still cuts rope better than teeth.',
+    slot: 'hand',
+    atkBonus: 1,
+    preferJobs: ['convers', 'guide'],
+  },
+  pilgrim_pin: {
+    id: 'pilgrim_pin',
+    name: 'Pilgrim Pin',
+    description: 'Cheap tin. Faith sold by the dozen.',
+    slot: 'quest',
+  },
 };
 
 export function makeItem(id: string, qty = 1): Item {
@@ -1203,6 +1247,168 @@ export const DIALOGUES: Record<string, DialogueNode[]> = {
       speaker: 'Market Crier',
       text: 'Still thin. Still talking.',
       choices: [{ text: '(Leave)', effect: 'end' }],
+    },
+  ],
+
+  // --- RMB world objects (content/narrative/15-rmb-objects.md) ---
+  obj_fontfroide_chest: [
+    {
+      id: 'start',
+      speaker: 'Relic Chest',
+      text: 'Oak, waxed linen, lead seal on the false bull inside. The true letter rides in your bag — don’t confuse them.',
+      choices: [
+        { text: 'Inspect the latch.', next: 'latch' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'latch',
+      speaker: 'Relic Chest',
+      text: 'Soft hinge. Peire could open it quiet — opening the *true* seal is still a sin you own.',
+      choices: [{ text: '(Step back)', effect: 'inspect_fontfroide_chest' }],
+    },
+  ],
+  obj_mile_marker: [
+    {
+      id: 'start',
+      speaker: 'Mile Marker',
+      text: 'Wet limestone. Scrapes where badges leaned. North toward the abbey, south toward ferry mud.',
+      choices: [
+        { text: 'Check the base.', next: 'base' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'base',
+      speaker: 'Mile Marker',
+      text: 'A broken strap — Hospital die wrong for the leather. Catalana was right about borrowed stamps.',
+      choices: [
+        { text: 'Take the strap scrap.', effect: 'loot_badge_scrap' },
+        { text: 'Leave it.', effect: 'inspect_mile_marker' },
+      ],
+    },
+  ],
+  obj_burial_gate: [
+    {
+      id: 'start',
+      speaker: 'Burial Gate',
+      text: 'Locked under interdict weather. Iron cold. The porch still remembers dry hands.',
+      choices: [
+        { text: 'Inspect the lock.', next: 'lock' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'lock',
+      speaker: 'Burial Gate',
+      text: 'Parish iron, not a puzzle. Shovels matter more than picks here.',
+      choices: [{ text: '(Leave)', effect: 'inspect_burial_gate' }],
+    },
+  ],
+  obj_mold_cavity: [
+    {
+      id: 'start',
+      speaker: 'Floor Cavity',
+      text: 'Goldsmith’s under-board hollow. River-slick. The die lived here before the Aude or the viscount took it.',
+      choices: [
+        { text: 'Feel for scraps.', next: 'scraps' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'scraps',
+      speaker: 'Floor Cavity',
+      text: 'Lead filings and a burnt scrap of chancery practice. Arnau can read the hand.',
+      choices: [
+        { text: 'Take the scrap.', effect: 'loot_chancery_scrap' },
+        { text: 'Leave it.', effect: 'inspect_mold_cavity' },
+      ],
+    },
+  ],
+  obj_ferry_rope: [
+    {
+      id: 'start',
+      speaker: 'Ferry Rope',
+      text: 'Taut hemp. Far latch watched. Cut under Sergeant Hold — not before.',
+      choices: [{ text: '(Step to the crossing)', effect: 'end' }],
+    },
+  ],
+  obj_crate: [
+    {
+      id: 'start',
+      speaker: 'Road Crate',
+      text: 'Wet oak. Rope handles. Smells of onions and river.',
+      choices: [
+        { text: 'Pry it.', next: 'pry' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'pry',
+      speaker: 'Road Crate',
+      text: 'Dried fish and a heel of bread. Travel food, not treasure.',
+      choices: [
+        { text: 'Take the rations.', effect: 'loot_crate_rations' },
+        { text: 'Leave it.', effect: 'end' },
+      ],
+    },
+  ],
+  obj_herb_pouch: [
+    {
+      id: 'start',
+      speaker: 'Herb Pouch',
+      text: 'Bitter greens Elias trusts more than prayers.',
+      choices: [
+        { text: 'Take it for the Surgeon.', effect: 'loot_herb_pouch' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+  ],
+  obj_wayside_chest: [
+    {
+      id: 'start',
+      speaker: 'Wayside Chest',
+      text: 'Cheap lock. Someone’s emergency coin.',
+      choices: [
+        { text: '[Convers] Soft latch — open it.', next: 'open' },
+        { text: 'Inspect only.', next: 'look' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'look',
+      speaker: 'Wayside Chest',
+      text: 'Scratch marks. Opened before. Maybe still something.',
+      choices: [
+        { text: 'Open it.', next: 'open' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'open',
+      speaker: 'Wayside Chest',
+      text: 'A few deniers and a blunt knife.',
+      choices: [{ text: 'Take them.', effect: 'loot_wayside_chest' }],
+    },
+  ],
+  obj_ambush_loot: [
+    {
+      id: 'start',
+      speaker: 'Loot Pile',
+      text: 'Torn badges and a wet purse. Nothing holy.',
+      choices: [
+        { text: 'Search it.', next: 'search' },
+        { text: '(Leave)', effect: 'end' },
+      ],
+    },
+    {
+      id: 'search',
+      speaker: 'Loot Pile',
+      text: 'A salve tin somebody dropped when the badges fled.',
+      choices: [
+        { text: 'Take the salve.', effect: 'loot_ambush_salve' },
+        { text: 'Leave it.', effect: 'end' },
+      ],
     },
   ],
 

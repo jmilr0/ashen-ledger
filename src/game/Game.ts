@@ -583,12 +583,21 @@ export class Game {
   }
 
   private resolvePropAction(prop: WorldInteractable): void {
+    // Prefer Narrative object trees when wired
+    const treeId = prop.dialogueId ?? (DIALOGUES[`obj_${prop.id}`] ? `obj_${prop.id}` : '');
+    if (treeId && DIALOGUES[treeId]) {
+      if (this.lootedProps.has(prop.id) && prop.kind === 'loot') {
+        this.toast('Already searched.');
+        return;
+      }
+      this.startDialogue(treeId);
+      return;
+    }
     if (prop.kind === 'inspect') {
       this.toast(prop.hint);
       return;
     }
     if (prop.kind === 'use') {
-      // Ferry rope → same gate as ferry NPC when possible
       if (prop.id === 'ferry_rope') {
         const ferry = this.world?.nearestNpc(3.5);
         if (ferry && ferry.id === 'ferry') {
@@ -1085,6 +1094,43 @@ export class Game {
       if (d === 'vine_boy') this.flags.talked_vine_boy = true;
       if (d === 'leper_bell') this.flags.talked_leper_bell = true;
       if (d === 'market_crier') this.flags.talked_market_crier = true;
+      return 'close';
+    }
+
+    if (effect.startsWith('loot_') || effect.startsWith('inspect_')) {
+      const map: Record<string, { item?: string | string[]; flag?: string; toast?: string }> = {
+        loot_badge_scrap: { item: 'badge_scrap', flag: 'mile_marker', toast: 'Torn strap — borrowed colors.' },
+        inspect_mile_marker: { flag: 'mile_marker' },
+        loot_chancery_scrap: { item: 'chancery_scrap', flag: 'mold_cavity', toast: 'Practice hand from the hollow.' },
+        inspect_mold_cavity: { flag: 'mold_cavity' },
+        inspect_fontfroide_chest: { flag: 'fontfroide_chest' },
+        inspect_burial_gate: { flag: 'burial_gate' },
+        loot_crate_rations: { item: 'travel_rations', flag: 'road_crate', toast: 'Travel rations stowed.' },
+        loot_herb_pouch: { item: 'bitter_herbs', flag: 'herb_pouch', toast: 'Bitter herbs for Elias.' },
+        loot_wayside_chest: { item: ['copper_coin', 'blunt_knife'], flag: 'wayside_chest', toast: 'Deniers and a blunt knife.' },
+        loot_ambush_salve: { item: 'canal_salve', flag: 'ambush_loot', toast: 'Salve tin recovered.' },
+        loot_altar_pocket: { item: ['copper_coin', 'pilgrim_pin'], flag: 'false_altar', toast: 'Altar litter — not holiness.' },
+        loot_boiled_linen: { item: 'bandages', flag: 'leper_linen', toast: 'Boiled linen for the kit.' },
+      };
+      const spec = map[effect];
+      if (spec) {
+        if (spec.flag && this.lootedProps.has(spec.flag) && effect.startsWith('loot_')) {
+          this.toast('Already searched.');
+          return 'close';
+        }
+        if (spec.item) {
+          const ids = Array.isArray(spec.item) ? spec.item : [spec.item];
+          for (const id of ids) this.grantLoot(id);
+        }
+        if (spec.flag) {
+          this.lootedProps.add(spec.flag);
+          this.world?.markInteractableLooted(spec.flag);
+        }
+        if (spec.toast) this.toast(spec.toast);
+        if (effect === 'loot_herb_pouch' && this.party.some((p) => p.id === 'surgeon' && !p.outForAct)) {
+          this.toast('Elias: Better than guessing.');
+        }
+      }
       return 'close';
     }
 
@@ -2171,12 +2217,13 @@ export class Game {
   private useItem(id: string): void {
     const item = this.inventory.find((i) => i.id === id);
     if (!item || item.qty < 1) return;
-    if (id === 'bandages' || id === 'canal_salve') {
+    if (id === 'bandages' || id === 'canal_salve' || id === 'bitter_herbs' || id === 'travel_rations') {
       const lead =
         this.party.find((p) => p.id === this.sheetFocusId && !p.outForAct) ??
         this.party.find((p) => p.id === 'clerk' && !p.outForAct) ??
         this.party.find((p) => !p.outForAct)!;
-      lead.stats.hp = Math.min(lead.stats.maxHp, lead.stats.hp + (id === 'canal_salve' ? 4 : 8));
+      const heal = id === 'bandages' ? 8 : id === 'travel_rations' ? 3 : 4;
+      lead.stats.hp = Math.min(lead.stats.maxHp, lead.stats.hp + heal);
       lead.bleeding = false;
       lead.bleedTicks = 0;
       item.qty -= 1;

@@ -36,6 +36,12 @@ Props: ferry_rope (tools/make_ferry_rope.py) — original wet-oak + hemp hitch, 
   olive_or_cypress (tools/make_olive_or_cypress.py) — Mediterranean cypress (not fantasy pine);
   market_stall (tools/make_market_stall.py) — canvas/wood wayside stall (Narbonne/road market);
   leper_bell_post (tools/make_leper_bell_post.py) — oak post + iron leper bell (Act III beat).
+  RMB loot/inspect props (stockpile_prop_common + make_*.py; latch ~1.2×):
+    loot_chest — small oak road/relic chest, iron bands + hasp;
+    inspect_crate — plank crate (ajar lid) + squat barrel;
+    herb_pouch — ground leather Surgeon satchel + herbs;
+    letter_packet — sealed parchment packet, wax + cord;
+    weapon_rack — oak spear/sword rack, dull iron (no chrome).
 Kenney CC0 Fantasy Town / Graveyard / Pirate — tinted dirt-and-mail; ghost unused.
 
 Named NPC hero meshes (shipped; replace interim remaps):
@@ -50,6 +56,7 @@ Named NPC hero meshes (shipped; replace interim remaps):
 Art path hooks (optional drops, non-blocking):
   props/: mile_marker, mold_cavity, cloister_arcade, cloister_arcade_b, cloister_well, leper_rest,
     ruin_debris_pile, village_shed, olive_or_cypress, market_stall, leper_bell_post,
+    loot_chest, inspect_crate, herb_pouch, letter_packet, weapon_rack,
     road_cart, road_fence_run, mud_rut_patch, pilgrim_bundle, wayside_cross, ferry_boat;
   building shells (exact): fontfroide_dormer, parish_nave_shell, priory_ruin_wall,
     priory_nave_shell, road_house_shell, goldsmith_shop_shell — replace Kenney/box when present;

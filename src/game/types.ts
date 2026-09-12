@@ -66,6 +66,8 @@ export interface WorldInteractable {
   hint: string;
   /** Optional inventory grant on loot (once). */
   lootItemId?: string;
+  /** Prefer dialogue tree when present (content/narrative/15-rmb-objects.md). */
+  dialogueId?: string;
 }
 
 export interface DialogueChoice {

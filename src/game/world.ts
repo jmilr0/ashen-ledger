@@ -121,6 +121,11 @@ const PATH = {
   oliveOrCypress: './models/props/olive_or_cypress.glb',
   marketStall: './models/props/market_stall.glb',
   leperBellPost: './models/props/leper_bell_post.glb',
+  lootChest: './models/props/loot_chest.glb',
+  inspectCrate: './models/props/inspect_crate.glb',
+  herbPouch: './models/props/herb_pouch.glb',
+  letterPacket: './models/props/letter_packet.glb',
+  weaponRack: './models/props/weapon_rack.glb',
   // Kenney extras for zone densify (already licensed in repo)
   borderPillar: './models/graveyard/border-pillar.glb',
   lanternCandle: './models/graveyard/lantern-candle.glb',
@@ -2122,7 +2127,7 @@ export class World {
       }
     }
 
-    this.seedWorldInteractables();
+    await this.seedWorldInteractables();
   }
 
   private async upgradeNpc(
@@ -2391,7 +2396,7 @@ export class World {
    * Hub props for RMB context (docs/stats-equip-sheet.md).
    * NPCs stay talk via pickNpc; these cover chests, cavity, markers, loot piles.
    */
-  private seedWorldInteractables(): void {
+  private async seedWorldInteractables(): Promise<void> {
     this.interactables.clear();
     // Clear prior interact-tagged meshes we own
     const doomed: THREE.Object3D[] = [];
@@ -2423,16 +2428,21 @@ export class World {
       const cellarer = this.activeNpcs.find((n) => n.id === 'cellarer');
       const cx = (cellarer?.x ?? -3.2) * TILE;
       const cz = (cellarer?.z ?? -1.2) * TILE;
-      const chest = this.makeChestPlaceholder();
+      const chestArt = await loadModel(PATH.lootChest);
+      const chest = chestArt ?? this.makeChestPlaceholder();
+      if (chestArt) {
+        fitToHeight(chest, 0.55);
+        tintMeshes(chest, 0x4a3424, 0.12);
+      }
       chest.name = 'interact-fontfroide-chest';
       this.registerInteractable(
         chest,
         {
           id: 'fontfroide_chest',
-          kind: 'loot',
-          label: 'Fontfroide chest',
-          hint: 'Iron bands, abbey wax. The bag already walks with you — only dust and a spare needle left.',
-          lootItemId: 'spare_kit',
+          kind: 'inspect',
+          label: 'Relic Chest',
+          hint: 'Oak, waxed linen, lead seal on the false bull inside.',
+          dialogueId: 'obj_fontfroide_chest',
         },
         cx + 0.85,
         cz + 0.35
@@ -2444,7 +2454,8 @@ export class World {
           id: 'mold_cavity',
           kind: 'inspect',
           label: 'Mold cavity',
-          hint: 'A hollow in the bench where a die sat warm. Lead dust. Wrong month still stains the rim.',
+          hint: 'Goldsmith’s under-board hollow. River-slick.',
+          dialogueId: 'obj_mold_cavity',
         },
         () => {
           const mold = this.activeNpcs.find((n) => n.id === 'mold');
@@ -2468,7 +2479,8 @@ export class World {
           id: 'mile_marker',
           kind: 'inspect',
           label: 'Mile marker',
-          hint: 'Worn stone. Fontfroide behind, Narbonne ahead — if the road still means that.',
+          hint: 'Wet limestone. Scrapes where badges leaned.',
+          dialogueId: 'obj_mile_marker',
         },
         () => {
           const bandits = this.activeNpcs.find((n) => n.id === 'bandits');
@@ -2486,7 +2498,7 @@ export class World {
         }
       );
 
-      // Ambush loot pile / corpse kit
+      // Ambush loot pile
       const bandits = this.activeNpcs.find((n) => n.id === 'bandits');
       const lx = ((bandits?.x ?? 3.2) * TILE) + 1.1;
       const lz = ((bandits?.z ?? -3.8) * TILE) + 0.6;
@@ -2520,7 +2532,8 @@ export class World {
         id: 'ambush_loot',
         kind: 'loot',
         label: 'Loot pile',
-        hint: 'Torn badges and a wet purse. Nothing holy — a salve tin somebody dropped.',
+        hint: 'Torn badges and a wet purse.',
+        dialogueId: 'obj_ambush_loot',
         lootItemId: 'canal_salve',
       });
 
@@ -2530,7 +2543,8 @@ export class World {
           id: 'burial_gate',
           kind: 'inspect',
           label: 'Burial gate',
-          hint: 'Locked iron. The parish keeps its dead from the road — and the road from its dead.',
+          hint: 'Locked under interdict weather.',
+          dialogueId: 'obj_burial_gate',
         },
         () => {
           const parish = this.activeNpcs.find((n) => n.id === 'parish');
@@ -2542,15 +2556,76 @@ export class World {
         }
       );
 
-      // Ferry rope — inspect flavor; talk still via ferry NPC
       const ferry = this.npcMeshes.get('ferry');
       if (ferry) {
         this.registerInteractable(ferry, {
           id: 'ferry_rope',
-          kind: 'use',
+          kind: 'inspect',
           label: 'Ferry rope',
-          hint: 'Wet hemp under strain. Convers Cut; Sergeant Hold — or swim with the letter.',
+          hint: 'Taut hemp. Far latch watched.',
+          dialogueId: 'obj_ferry_rope',
         });
+      }
+
+      // Art densifiers — road crate + herb pouch + wayside chest (off crown)
+      const crateArt = await loadModel(PATH.inspectCrate);
+      if (crateArt) {
+        fitToHeight(crateArt, 0.7);
+        tintMeshes(crateArt, 0x4a4030, 0.1);
+        crateArt.name = 'interact-road-crate';
+        this.registerInteractable(
+          crateArt,
+          {
+            id: 'road_crate',
+            kind: 'loot',
+            label: 'Road crate',
+            hint: 'Wet oak. Rope handles.',
+            dialogueId: 'obj_crate',
+            lootItemId: 'travel_rations',
+          },
+          3.4,
+          6.0
+        );
+      }
+
+      const herbArt = await loadModel(PATH.herbPouch);
+      if (herbArt) {
+        fitToHeight(herbArt, 0.35);
+        tintMeshes(herbArt, 0x4a5840, 0.12);
+        herbArt.name = 'interact-herb-pouch';
+        this.registerInteractable(
+          herbArt,
+          {
+            id: 'herb_pouch',
+            kind: 'loot',
+            label: 'Herb pouch',
+            hint: 'Bitter greens Elias trusts.',
+            dialogueId: 'obj_herb_pouch',
+            lootItemId: 'bitter_herbs',
+          },
+          -3.2,
+          12.5
+        );
+      }
+
+      const waysideArt = await loadModel(PATH.lootChest);
+      if (waysideArt) {
+        const w = waysideArt.clone(true);
+        fitToHeight(w, 0.48);
+        tintMeshes(w, 0x3a3020, 0.1);
+        w.name = 'interact-wayside-chest';
+        this.registerInteractable(
+          w,
+          {
+            id: 'wayside_chest',
+            kind: 'loot',
+            label: 'Wayside chest',
+            hint: 'Cheap lock. Emergency coin.',
+            dialogueId: 'obj_wayside_chest',
+          },
+          3.6,
+          -12.0
+        );
       }
 
       tagNamed(

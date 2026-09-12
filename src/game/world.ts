@@ -11,8 +11,7 @@ const HALF_Z = 50;
 /** Legacy square stub maps (Corbières / Act III) until their outdoor docs land. */
 const GRID = 18; // ~21.6 m
 const PLAYER_RADIUS = 0.32;
-/** Formation trail center-to-center (~0.9 m). Soft-slide uses a leaner radius so doorways stay clear. */
-const FOLLOW_SPACING = 0.9;
+/** Soft-slide leaner radius so ≥1.2 m doorways stay clear. */
 const FOLLOWER_RADIUS = 0.22;
 /** m/s — below this, keep last yaw (no arrive / wall jitter). */
 const FACE_MOVE_EPS = 0.15;
@@ -20,10 +19,25 @@ const FACE_MOVE_EPS = 0.15;
 const TURN_RATE = 12;
 /** Hard turn cap while walking (~540°/s). */
 const TURN_CAP_RAD = (540 * Math.PI) / 180;
-/** Follower position chase (corner skate → softer than leader). */
-const FOLLOW_CHASE = 6;
+/** In-place stop-turn before stepping (~360°/s). */
+const STOP_TURN_RATE = (360 * Math.PI) / 180;
+/** Follower position chase toward own slot (docs/locomotion-formation-v2.md). */
+const FOLLOW_CHASE = 5.5;
 /** Follower yaw lag vs leader when nearly stopped (slight lag, not instant-copy). */
 const FOLLOW_YAW_LAG = 9;
+/** Seconds of nearly-perp slide before facing velocity instead of click intent. */
+const WALL_SLIDE_OVERRIDE_S = 0.25;
+/**
+ * Loose formation soft slots in leader space: (forward, right) meters.
+ * Kill 0.9 m conga — ~2–3 wide, 2 ranks (docs/locomotion-formation-v2.md).
+ */
+const FORMATION_SLOTS: Record<JobId, { fwd: number; right: number }> = {
+  sergeant: { fwd: -1.4, right: -0.7 },
+  convers: { fwd: -1.4, right: 0.7 },
+  guide: { fwd: -2.6, right: -1.1 },
+  clerk: { fwd: -2.6, right: 1.1 },
+  surgeon: { fwd: -2.8, right: 0.0 },
+};
 const ORBIT_DIST = 24;
 const ORBIT_PITCH_MIN = 0.35;
 const ORBIT_PITCH_MAX = 1.25;
@@ -128,10 +142,19 @@ export class World {
   private npcMeshes = new Map<string, THREE.Group>();
   private followerMeshes = new Map<JobId, THREE.Group>();
   private pathTarget: THREE.Vector3 | null = null;
+  /** Click-intent yaw (atan2 to destination). Blend while moving. */
+  private intentYaw: number | null = null;
+  /** Accumulated time velocity is nearly perpendicular to intent (wall-slide). */
+  private wallSlideTimer = 0;
+  /** Brief in-place yaw before stepping when stopped click needs >90°. */
+  private stopTurnUntil = 0;
   private zone: MapZone = 'act1_road';
   private activeNpcs: NpcDef[] = [];
   private controlledId: JobId = 'clerk';
   private followerTrail: JobId[] = [];
+  /** Compress offsets when doorways block (scale toward trail, then expand). */
+  private formationCompress = 1;
+  private formationBlockStreak = 0;
   private readonly moveSpeed = 4.5;
   private marker!: THREE.Mesh;
   private clock = new THREE.Clock();
@@ -2165,9 +2188,21 @@ export class World {
   }
 
   /**
-   * Face horizontal move velocity from resolved delta.
-   * speed < FACE_MOVE_EPS (~0.15 m/s) → hold yaw (no snap atan2 / arrive twitch).
+   * Face toward a yaw target with v1 damper (TURN_RATE + cap).
+   * speed < FACE_MOVE_EPS (~0.15 m/s) → hold yaw (no snap / arrive twitch).
    */
+  private faceTowardYaw(
+    mesh: THREE.Object3D,
+    targetYaw: number,
+    speed: number,
+    dt: number,
+    rate = TURN_RATE
+  ): void {
+    if (speed < FACE_MOVE_EPS) return;
+    mesh.rotation.y = this.smoothYaw(mesh.rotation.y, targetYaw, dt, rate);
+  }
+
+  /** Face horizontal move velocity from resolved delta (followers / slide fallback). */
   private faceMoveVelocity(
     mesh: THREE.Object3D,
     dx: number,
@@ -2177,8 +2212,50 @@ export class World {
   ): void {
     const speed = Math.hypot(dx, dz) / Math.max(0.001, dt);
     if (speed < FACE_MOVE_EPS) return;
-    const targetYaw = Math.atan2(dx, dz);
-    mesh.rotation.y = this.smoothYaw(mesh.rotation.y, targetYaw, dt, rate);
+    this.faceTowardYaw(mesh, Math.atan2(dx, dz), speed, dt, rate);
+  }
+
+  /**
+   * Controlled yaw: prefer click intent; wall-slide override if stuck >0.25s;
+   * hold under FACE_MOVE_EPS (docs/locomotion-formation-v2.md).
+   */
+  private updateControlledYaw(
+    movedX: number,
+    movedZ: number,
+    dt: number,
+    intentDx: number,
+    intentDz: number
+  ): void {
+    const speed = Math.hypot(movedX, movedZ) / Math.max(0.001, dt);
+    if (speed < FACE_MOVE_EPS) {
+      this.wallSlideTimer = 0;
+      return;
+    }
+    const velYaw = Math.atan2(movedX, movedZ);
+    let target = velYaw;
+    if (this.intentYaw != null) {
+      const intentLen = Math.hypot(intentDx, intentDz);
+      const intentYaw =
+        intentLen > 1e-4 ? Math.atan2(intentDx, intentDz) : this.intentYaw;
+      this.intentYaw = intentYaw;
+      const arc = Math.abs(this.shortestYawDelta(intentYaw, velYaw));
+      // Nearly perpendicular to intent → accumulate wall-slide timer
+      if (arc > Math.PI * 0.45) {
+        this.wallSlideTimer += dt;
+      } else {
+        this.wallSlideTimer = 0;
+      }
+      if (this.wallSlideTimer < WALL_SLIDE_OVERRIDE_S && arc < Math.PI * 0.5) {
+        target = intentYaw;
+      } else if (this.wallSlideTimer >= WALL_SLIDE_OVERRIDE_S) {
+        target = velYaw; // face along wall so we don't moonwalk
+      } else {
+        target = intentYaw;
+      }
+    } else {
+      this.wallSlideTimer = 0;
+    }
+    this.faceTowardYaw(this.playerMesh, target, speed, dt);
   }
 
   private layoutFollowers(snap: boolean, dt = 1 / 60): void {
@@ -2192,32 +2269,41 @@ export class World {
     }
 
     const facing = this.playerMesh.rotation.y;
-    const backX = -Math.sin(facing);
-    const backZ = -Math.cos(facing);
+    const fwdX = Math.sin(facing);
+    const fwdZ = Math.cos(facing);
     const sideX = Math.cos(facing);
-    const sideZ = Math.sin(facing);
+    const sideZ = -Math.sin(facing);
     const dtClamped = Math.max(0.001, dt);
-    // Corner skate fix: softer chase than prior exp(-9·dt)
     const chase = snap ? 1 : 1 - Math.exp(-FOLLOW_CHASE * dtClamped);
+    const leadX = this.playerMesh.position.x;
+    const leadZ = this.playerMesh.position.z;
 
-    let anchorX = this.playerMesh.position.x;
-    let anchorZ = this.playerMesh.position.z;
+    // Doorway compress: scale offsets toward trail when softSlide fails repeatedly
+    if (!snap) {
+      if (this.formationBlockStreak >= 2) {
+        this.formationCompress = Math.max(0.55, this.formationCompress - dtClamped * 1.2);
+      } else {
+        this.formationCompress = Math.min(1, this.formationCompress + dtClamped * 0.8);
+      }
+    } else {
+      this.formationCompress = 1;
+      this.formationBlockStreak = 0;
+    }
 
-    for (let slot = 0; slot < this.followerTrail.length; slot++) {
-      const id = this.followerTrail[slot];
+    let blockedThisFrame = 0;
+    const scale = this.formationCompress;
+
+    for (const id of this.followerTrail) {
       const mesh = this.followerMeshes.get(id);
       if (!mesh) continue;
       mesh.visible = true;
-      const side = slot % 2 === 0 ? -0.22 : 0.22;
-      const idealX = anchorX + backX * FOLLOW_SPACING + sideX * side;
-      const idealZ = anchorZ + backZ * FOLLOW_SPACING + sideZ * side;
+      const slot = FORMATION_SLOTS[id] ?? { fwd: -1.8, right: 0 };
+      const idealX = leadX + fwdX * slot.fwd * scale + sideX * slot.right * scale;
+      const idealZ = leadZ + fwdZ * slot.fwd * scale + sideZ * slot.right * scale;
 
       if (snap) {
-        // Snap positions OK; do NOT instant-copy leader yaw — damp next frames
         const slid = this.softSlideFollower(idealX, idealZ, idealX, idealZ, sideX, sideZ);
         mesh.position.set(slid.x, 0, slid.z);
-        anchorX = mesh.position.x;
-        anchorZ = mesh.position.z;
         continue;
       }
 
@@ -2226,11 +2312,10 @@ export class World {
       const slid = this.softSlideFollower(fromX, fromZ, idealX, idealZ, sideX, sideZ);
       const missIdeal = Math.hypot(idealX - slid.x, idealZ - slid.z);
       const canStep = Math.hypot(slid.x - fromX, slid.z - fromZ);
-      // softSlide failed: ideal still blocked and no progress → freeze slot (no wall rubber-band)
+      // softSlide failed: freeze slot (no wall rubber-band)
       if (missIdeal > 0.25 && canStep < 1e-4) {
+        blockedThisFrame += 1;
         mesh.rotation.y = this.smoothYaw(mesh.rotation.y, facing, dtClamped, FOLLOW_YAW_LAG);
-        anchorX = fromX;
-        anchorZ = fromZ;
         continue;
       }
 
@@ -2243,17 +2328,14 @@ export class World {
       const movedZ = mesh.position.z - prevZ;
       const moveSpeed = Math.hypot(movedX, movedZ) / dtClamped;
       if (moveSpeed >= FACE_MOVE_EPS) {
-        // Own move direction — same damper, never instant-copy leader
         this.faceMoveVelocity(mesh, movedX, movedZ, dtClamped);
       } else {
-        // Slight lag toward formation facing (party switch settles <0.5s)
         mesh.rotation.y = this.smoothYaw(mesh.rotation.y, facing, dtClamped, FOLLOW_YAW_LAG);
       }
-
-      // Chain on settled pose so the trail bends naturally
-      anchorX = mesh.position.x;
-      anchorZ = mesh.position.z;
     }
+
+    if (blockedThisFrame > 0) this.formationBlockStreak += 1;
+    else this.formationBlockStreak = 0;
   }
 
   setPlayerPos(x: number, z: number): void {
@@ -2371,6 +2453,21 @@ export class World {
     const { hx, hz } = this.playableHalf();
     point.x = Math.max(-hx, Math.min(hx, point.x));
     point.z = Math.max(-hz, Math.min(hz, point.z));
+    const pos = this.playerMesh.position;
+    const dx = point.x - pos.x;
+    const dz = point.z - pos.z;
+    if (Math.hypot(dx, dz) > 0.05) {
+      this.intentYaw = Math.atan2(dx, dz);
+      this.wallSlideTimer = 0;
+      // Optional stop-turn: if stopped and click needs >90°, plant and turn briefly
+      const moving = this.pathTarget != null;
+      const arc = Math.abs(this.shortestYawDelta(this.playerMesh.rotation.y, this.intentYaw));
+      if (!moving && arc > Math.PI * 0.5) {
+        this.stopTurnUntil = this.clock.getElapsedTime() + 0.35;
+      } else {
+        this.stopTurnUntil = 0;
+      }
+    }
     this.pathTarget = point;
     this.marker.position.set(point.x, 0.05, point.z);
     this.marker.visible = true;
@@ -2403,6 +2500,8 @@ export class World {
     }
 
     if (!this.pathTarget) {
+      this.intentYaw = null;
+      this.wallSlideTimer = 0;
       this.layoutFollowers(false, dt);
       this.updateCamera();
       return;
@@ -2413,6 +2512,9 @@ export class World {
     const dist = Math.hypot(dx, dz);
     if (dist < 0.08) {
       this.pathTarget = null;
+      this.intentYaw = null;
+      this.wallSlideTimer = 0;
+      this.stopTurnUntil = 0;
       this.marker.visible = false;
       this.playerX = pos.x / TILE;
       this.playerZ = pos.z / TILE;
@@ -2421,6 +2523,24 @@ export class World {
       this.updateCamera();
       return;
     }
+
+    // Optional stop-turn: yaw in place toward intent before stepping
+    const now = this.clock.getElapsedTime();
+    if (this.stopTurnUntil > now && this.intentYaw != null) {
+      const before = this.playerMesh.rotation.y;
+      const maxStep = STOP_TURN_RATE * dt;
+      const delta = this.shortestYawDelta(before, this.intentYaw);
+      const stepYaw = Math.abs(delta) <= maxStep ? delta : Math.sign(delta) * maxStep;
+      this.playerMesh.rotation.y = before + stepYaw;
+      if (Math.abs(this.shortestYawDelta(this.playerMesh.rotation.y, this.intentYaw)) < 0.12) {
+        this.stopTurnUntil = 0;
+      }
+      this.layoutFollowers(false, dt);
+      this.updateCamera();
+      return;
+    }
+    this.stopTurnUntil = 0;
+
     const step = Math.min(dist, this.moveSpeed * dt);
     const wantX = pos.x + (dx / dist) * step;
     const wantZ = pos.z + (dz / dist) * step;
@@ -2432,12 +2552,13 @@ export class World {
     const moved = Math.hypot(movedX, movedZ);
     if (moved < 1e-4 && dist > 0.15) {
       this.pathTarget = null;
+      this.intentYaw = null;
+      this.wallSlideTimer = 0;
       this.marker.visible = false;
     } else {
       pos.x = resolved.x;
       pos.z = resolved.z;
-      // Yaw follows horizontal move velocity (smooth); stopped keeps last facing
-      this.faceMoveVelocity(this.playerMesh, movedX, movedZ, dt);
+      this.updateControlledYaw(movedX, movedZ, dt, dx, dz);
     }
     this.playerX = pos.x / TILE;
     this.playerZ = pos.z / TILE;

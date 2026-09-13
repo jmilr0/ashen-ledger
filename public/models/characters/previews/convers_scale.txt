@@ -1,6 +1,6 @@
-height_m=1.7400
-width_x_m=0.5600
-depth_y_m=0.3698
+height_m=1.6617
+width_x_m=0.7799
+depth_y_m=0.7116
 tris=14928
 objects=Convers_Cudgel,Convers_Habit,Convers_Head,Convers_Keys,Convers_Limbs,Convers_RopeBelt,Convers_Scapular
 capsule_diameter_m=0.60

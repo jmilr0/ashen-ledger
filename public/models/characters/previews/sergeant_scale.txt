@@ -1,6 +1,6 @@
-height_m=1.7800
-width_x_m=0.5210
-depth_y_m=0.3119
+height_m=1.6178
+width_x_m=0.9431
+depth_y_m=0.7518
 tris=13618
 objects=Sergeant_Belt,Sergeant_Coif,Sergeant_Hauberk,Sergeant_Head,Sergeant_Kit,Sergeant_Limbs,Sergeant_Spear,Sergeant_Surcoat
 capsule_diameter_m=0.60

@@ -1184,7 +1184,7 @@ def build_clerk():
     return meshes, arm
 
 
-def export_glb(path):
+def export_glb(path, export_animations=True):
     # Select character meshes + armature only
     bpy.ops.object.select_all(action='DESELECT')
     for obj in bpy.context.scene.objects:
@@ -1196,10 +1196,22 @@ def export_glb(path):
         use_selection=True,
         export_apply=True,
         export_yup=True,
-        export_animations=False,
+        export_animations=export_animations,
+        export_animation_mode='ACTIONS',
+        export_nla_strips=True,
+        export_force_sampling=True,
+        export_frame_range=False,
+        export_anim_single_armature=True,
+        export_reset_pose_bones=True,
         export_skins=True,
         export_morph=False,
     )
+    if export_animations:
+        try:
+            import character_common as _cc
+            _cc.normalize_glb_clip_names(path)
+        except Exception as exc:
+            print('WARN normalize_glb_clip_names failed:', exc)
 
 
 def setup_preview_world():
@@ -1309,13 +1321,21 @@ def cleanup_preview_helpers():
 
 def main():
     meshes, arm = build_clerk()
+    # Automatic weights + Idle/Walk clips (shared party bake helpers)
+    import sys as _sys
+    _tools = os.path.dirname(os.path.abspath(__file__))
+    if _tools not in _sys.path:
+        _sys.path.insert(0, _tools)
+    import character_common as cc
+    cc.apply_party_clips(arm, meshes)
+
     glb_path = os.path.join(OUT_DIR, 'clerk.glb')
-    export_glb(glb_path)
+    export_glb(glb_path, export_animations=True)
     print('Exported', glb_path)
 
     render_previews()
     cleanup_preview_helpers()
-    export_glb(glb_path)
+    export_glb(glb_path, export_animations=True)
     print('Re-exported clean', glb_path)
 
     mesh_objs = [o for o in bpy.context.scene.objects if o.type == 'MESH']

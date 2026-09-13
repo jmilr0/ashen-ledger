@@ -1,8 +1,20 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 const loader = new GLTFLoader();
 const cache = new Map<string, THREE.Group>();
+const clipCache = new Map<string, THREE.AnimationClip[]>();
+
+/** Cached clips for a URL (`Walk` / `Idle` when Art bakes them). */
+export function clipsFor(url: string): THREE.AnimationClip[] {
+  return clipCache.get(url) ?? [];
+}
+
+/** Clone a GLB proto with remapped skeletons (safe for AnimationMixer). */
+export function cloneModel(proto: THREE.Object3D): THREE.Group {
+  return cloneSkinned(proto) as THREE.Group;
+}
 
 /** Load a GLB once; returns a cloned Group (safe to place many times). */
 export async function loadModel(url: string): Promise<THREE.Group | null> {
@@ -11,6 +23,10 @@ export async function loadModel(url: string): Promise<THREE.Group | null> {
     if (!proto) {
       const gltf = await loader.loadAsync(url);
       proto = gltf.scene;
+      clipCache.set(
+        url,
+        (gltf.animations ?? []).map((c) => c.clone())
+      );
       proto.traverse((obj) => {
         const m = obj as THREE.Mesh;
         if (m.isMesh) {
@@ -26,7 +42,7 @@ export async function loadModel(url: string): Promise<THREE.Group | null> {
       });
       cache.set(url, proto);
     }
-    return proto.clone(true);
+    return cloneModel(proto);
   } catch (err) {
     console.warn('Failed to load model', url, err);
     return null;

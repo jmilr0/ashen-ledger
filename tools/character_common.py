@@ -522,13 +522,116 @@ def finalize_scale(meshes, target_height, max_width=MAX_WIDTH_DEFAULT):
     clamp_width(meshes, max_width)
     return meshes
 
-def export_glb(path):
+def normalize_glb_clip_names(path, wanted=('Idle', 'Walk')):
+    """Force animation names to exact Mixer ids (strip suffixes like Walk_Clerk_Armature)."""
+    import json, struct
+    path = str(path)
+    with open(path, 'rb') as f:
+        data = f.read()
+    magic, version, length = struct.unpack_from('<4sII', data, 0)
+    if magic != b'glTF':
+        raise RuntimeError(f'not a GLB: {path}')
+    offset = 12
+    chunks = []
+    while offset + 8 <= len(data):
+        clen, ctype = struct.unpack_from('<I4s', data, offset)
+        offset += 8
+        cdata = data[offset:offset + clen]
+        offset += clen
+        chunks.append((ctype, cdata))
+    json_chunk = next((c for t, c in chunks if t == b'JSON'), None)
+    bin_chunk = next((c for t, c in chunks if t == b'BIN\x00'), None)
+    if json_chunk is None:
+        raise RuntimeError('no JSON chunk')
+    gltf = json.loads(json_chunk.decode('utf-8').rstrip(' \x00'))
+    anims = gltf.get('animations') or []
+    if not anims:
+        print('normalize_glb_clip_names: no animations in', path)
+        return False
+    renamed = []
+    for anim in anims:
+        name = anim.get('name') or ''
+        new = name
+        for w in wanted:
+            if name == w or name.startswith(w + '_') or name.startswith(w + '|'):
+                new = w
+                break
+            # also Idle_Clerk_Armature style already covered by startswith
+        if 'idle' in name.lower() and not name.startswith('Walk'):
+            # catch case-variants / infix only if not already mapped
+            if new == name and name != 'Idle':
+                if name.lower().startswith('idle'):
+                    new = 'Idle'
+        if new != name:
+            renamed.append((name, new))
+            anim['name'] = new
+    # If still not exact Idle/Walk and we have exactly 2 clips, assign by keyword then order
+    names = [a.get('name') for a in anims]
+    if len(anims) == 2 and (set(names) != set(wanted)):
+        idle_i = walk_i = None
+        for i, a in enumerate(anims):
+            n = (a.get('name') or '').lower()
+            if 'idle' in n and idle_i is None:
+                idle_i = i
+            if 'walk' in n and walk_i is None:
+                walk_i = i
+        if idle_i is not None:
+            renamed.append((anims[idle_i].get('name'), 'Idle'))
+            anims[idle_i]['name'] = 'Idle'
+        if walk_i is not None:
+            renamed.append((anims[walk_i].get('name'), 'Walk'))
+            anims[walk_i]['name'] = 'Walk'
+        names = [a.get('name') for a in anims]
+        if set(names) != set(wanted):
+            anims[0]['name'] = 'Idle'
+            anims[1]['name'] = 'Walk'
+            renamed.append(('order_fallback', 'Idle/Walk'))
+    new_json = json.dumps(gltf, separators=(',', ':')).encode('utf-8')
+    pad = (4 - (len(new_json) % 4)) % 4
+    new_json_padded = new_json + (b' ' * pad)
+    out = bytearray()
+    out += struct.pack('<4sII', b'glTF', version, 0)
+    out += struct.pack('<I4s', len(new_json_padded), b'JSON')
+    out += new_json_padded
+    if bin_chunk is not None:
+        pad_bin = (4 - (len(bin_chunk) % 4)) % 4
+        bin_p = bin_chunk + (b'\x00' * pad_bin)
+        out += struct.pack('<I4s', len(bin_p), b'BIN\x00')
+        out += bin_p
+    struct.pack_into('<I', out, 8, len(out))
+    with open(path, 'wb') as f:
+        f.write(out)
+    final = [a.get('name') for a in gltf.get('animations', [])]
+    print('normalize_glb_clip_names:', path, 'renames=', renamed or 'none', 'final=', final)
+    return True
+
+
+def export_glb(path, export_animations=True):
     bpy.ops.object.select_all(action='DESELECT')
     for obj in bpy.context.scene.objects:
         if obj.type in {'MESH', 'ARMATURE'} and not obj.name.startswith('Preview') and obj.name != 'CapsuleGuide':
             obj.select_set(True)
-    bpy.ops.export_scene.gltf(filepath=path, export_format='GLB', use_selection=True,
-        export_apply=True, export_yup=True, export_animations=False, export_skins=True, export_morph=False)
+    bpy.ops.export_scene.gltf(
+        filepath=path,
+        export_format='GLB',
+        use_selection=True,
+        export_apply=True,
+        export_yup=True,
+        export_animations=export_animations,
+        export_animation_mode='ACTIONS',
+        export_nla_strips=True,
+        export_force_sampling=True,
+        export_frame_range=False,
+        export_anim_single_armature=True,
+        export_reset_pose_bones=True,
+        export_skins=True,
+        export_morph=False,
+    )
+    if export_animations:
+        try:
+            normalize_glb_clip_names(path)
+        except Exception as exc:
+            print('WARN normalize_glb_clip_names failed:', exc)
 
 def setup_preview_world():
     scene = bpy.context.scene
@@ -612,24 +715,375 @@ def write_scale_meta(slug, meshes, target_height, look_note=''):
     print('Objects:', names)
     return b, tris
 
-def finish_character(slug, meshes, arm_name, target_height, max_width=MAX_WIDTH_DEFAULT, look_note=''):
+def finish_character(slug, meshes, arm_name, target_height, max_width=MAX_WIDTH_DEFAULT, look_note='',
+                    bake_clips=True):
     meshes = [m for m in meshes if m is not None]
     finalize_scale(meshes, target_height, max_width)
     arm = create_armature(arm_name)
-    for obj in meshes:
-        obj.parent = arm
+    if bake_clips:
+        apply_party_clips(arm, meshes)
+    else:
+        for obj in meshes:
+            obj.parent = arm
     b = world_bounds(meshes)
     tris = count_tris(meshes)
     print(f"{slug} final size={tuple(round(x, 4) for x in b['size'])} tris={tris}")
     if tris < 10000: print('WARN: tris under 10k target')
     if tris > 28000: print('WARN: tris over 28k target')
     glb_path = os.path.join(OUT_DIR, f'{slug}.glb')
-    export_glb(glb_path)
+    export_glb(glb_path, export_animations=bake_clips)
     print('Exported', glb_path)
-    render_previews(slug, target_height)
-    cleanup_preview_helpers()
-    export_glb(glb_path)
-    print('Re-exported clean', glb_path)
+    if os.environ.get('ASHEN_SKIP_PREVIEWS', '').strip() not in ('1', 'true', 'yes'):
+        render_previews(slug, target_height)
+        cleanup_preview_helpers()
+        export_glb(glb_path, export_animations=bake_clips)
+        print('Re-exported clean', glb_path)
+    else:
+        print('Skipping previews (ASHEN_SKIP_PREVIEWS)')
     mesh_objs = [o for o in bpy.context.scene.objects if o.type == 'MESH']
     write_scale_meta(slug, mesh_objs, target_height, look_note=look_note)
     return glb_path
+
+
+# ---------------------------------------------------------------------------
+# Skinning + Idle/Walk clips (party locomotion for AnimationMixer)
+# ---------------------------------------------------------------------------
+
+WALK_FRAMES = 28
+WALK_FPS = 24
+IDLE_FRAMES = 48
+IDLE_FPS = 24
+
+# Props: bone-parent (no skin deform) so long staffs/spears don't bend wildly.
+_PROP_BONE = (
+    ('Staff', 'Hand_R'),
+    ('Spear', 'Hand_R'),
+    ('Cudgel', 'Hand_R'),
+    ('Satchel', 'Hips'),
+    ('Kit', 'Hips'),
+    ('Keys', 'Hips'),
+    ('ToolRoll', 'Hips'),
+    ('Basin', 'Hips'),
+    ('KnifeCase', 'Hips'),
+    ('Knife', 'Hips'),
+    ('InkPouch', 'Hips'),
+    ('Quill', 'Hips'),
+)
+
+
+def _is_prop_mesh(obj):
+    name = obj.name
+    for hint, _bone in _PROP_BONE:
+        if hint in name:
+            return True
+    return False
+
+
+def _prop_bone_for(obj):
+    name = obj.name
+    for hint, bone in _PROP_BONE:
+        if hint in name:
+            return bone
+    return 'Hips'
+
+
+def clear_object_parent(obj):
+    mw = obj.matrix_world.copy()
+    obj.parent = None
+    obj.matrix_world = mw
+
+
+def bone_parent_keep_world(obj, arm, bone_name):
+    """Parent obj to an armature bone without changing world transform."""
+    clear_object_parent(obj)
+    bpy.context.view_layer.update()
+    mw = obj.matrix_world.copy()
+    obj.parent = arm
+    obj.parent_type = 'BONE'
+    obj.parent_bone = bone_name
+    bpy.context.view_layer.update()
+    obj.matrix_world = mw
+
+
+def bind_meshes_auto_weights(arm, meshes):
+    """Automatic weights on body meshes; bone-parent props to hips/hand."""
+    meshes = [m for m in meshes if m is not None and m.name in bpy.data.objects]
+    body = []
+    props = []
+    for m in meshes:
+        if _is_prop_mesh(m):
+            props.append(m)
+        else:
+            body.append(m)
+
+    for m in meshes:
+        clear_object_parent(m)
+        # Drop stale armature mods / groups from prior runs
+        for mod in list(m.modifiers):
+            if mod.type == 'ARMATURE':
+                m.modifiers.remove(mod)
+        m.vertex_groups.clear()
+
+    if body:
+        bpy.ops.object.select_all(action='DESELECT')
+        for m in body:
+            m.select_set(True)
+        arm.select_set(True)
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+        bpy.ops.object.select_all(action='DESELECT')
+
+    for p in props:
+        bone = _prop_bone_for(p)
+        if bone in arm.data.bones:
+            bone_parent_keep_world(p, arm, bone)
+        else:
+            p.parent = arm
+            p.parent_type = 'OBJECT'
+    return body, props
+
+
+def _ensure_pose_xyz(arm):
+    bpy.context.view_layer.objects.active = arm
+    if bpy.context.object.mode != 'POSE':
+        bpy.ops.object.mode_set(mode='POSE')
+    for pb in arm.pose.bones:
+        pb.rotation_mode = 'XYZ'
+        pb.rotation_euler = (0.0, 0.0, 0.0)
+        pb.location = (0.0, 0.0, 0.0)
+        pb.scale = (1.0, 1.0, 1.0)
+
+
+def _key_pose(arm, frame, bone_rots, bone_locs=None):
+    """bone_rots: name -> (rx,ry,rz) degrees. bone_locs: name -> (x,y,z) local."""
+    bone_locs = bone_locs or {}
+    for name, eul_deg in bone_rots.items():
+        pb = arm.pose.bones.get(name)
+        if pb is None:
+            continue
+        pb.rotation_mode = 'XYZ'
+        pb.rotation_euler = tuple(math.radians(a) for a in eul_deg)
+        pb.keyframe_insert(data_path='rotation_euler', frame=frame)
+    for name, loc in bone_locs.items():
+        pb = arm.pose.bones.get(name)
+        if pb is None:
+            continue
+        pb.location = loc
+        pb.keyframe_insert(data_path='location', frame=frame)
+
+
+def _new_action(arm, name):
+    # Remove prior action with same name
+    old = bpy.data.actions.get(name)
+    if old is not None:
+        bpy.data.actions.remove(old)
+    action = bpy.data.actions.new(name=name)
+    if arm.animation_data is None:
+        arm.animation_data_create()
+    arm.animation_data.action = action
+    return action
+
+
+def _set_fcurve_cycle(action):
+    for fc in action.fcurves:
+        for mod in list(fc.modifiers):
+            fc.modifiers.remove(mod)
+        # Constant extrapolation; mixer loops by clip duration
+        fc.extrapolation = 'CONSTANT'
+        for kp in fc.keyframe_points:
+            kp.interpolation = 'BEZIER'
+            kp.handle_left_type = 'AUTO_CLAMPED'
+            kp.handle_right_type = 'AUTO_CLAMPED'
+
+
+def create_walk_action(arm, frames=WALK_FRAMES, fps=WALK_FPS, name='Walk'):
+    """In-place walk with alternate foot plant, hip bob, arm swing."""
+    scene = bpy.context.scene
+    scene.render.fps = fps
+    scene.frame_start = 1
+    scene.frame_end = frames
+
+    _ensure_pose_xyz(arm)
+    action = _new_action(arm, name)
+
+    # Phases (1-based frames). Loop: frame 1 == pose after frame `frames`.
+    # Contact L @ 1, pass @ mid-quarter, contact R @ half, pass, contact L @ frames+1
+    f1 = 1
+    f_q = 1 + frames // 4          # ~8
+    f_h = 1 + frames // 2          # ~15
+    f_3q = 1 + (3 * frames) // 4   # ~22
+    f_end = frames                 # 28 — same as f1 for loop
+
+    # Leg swing uses local X on downward-pointing thigh/calf bones.
+    # Positive X ≈ swing toward character forward (+Y) on this armature.
+    def leg(swing, knee, plant_toe=0.0):
+        # swing: thigh X deg (+: forward). knee: calf X (flex is typically + on down bone).
+        return swing, knee, plant_toe
+
+    # Contact L / push R
+    contact_L = {
+        'Hips': (2.0, 0.0, -3.0),
+        'Spine': (-2.0, 0.0, 2.0),
+        'Chest': (2.0, 0.0, 0.0),
+        'Thigh_L': (18.0, 0.0, 2.0),
+        'Calf_L': (8.0, 0.0, 0.0),
+        'Foot_L': (-12.0, 0.0, 0.0),
+        'Thigh_R': (-22.0, 0.0, -2.0),
+        'Calf_R': (45.0, 0.0, 0.0),
+        'Foot_R': (10.0, 0.0, 0.0),
+        'UpperArm_L': (-8.0, 0.0, -12.0),
+        'ForeArm_L': (10.0, 0.0, 0.0),
+        'UpperArm_R': (10.0, 0.0, 12.0),
+        'ForeArm_R': (15.0, 0.0, 0.0),
+        'Shoulder_L': (0.0, 0.0, -4.0),
+        'Shoulder_R': (0.0, 0.0, 4.0),
+        'Head': (0.0, 0.0, 3.0),
+    }
+    # Passing — L swinging back, R coming forward; both off full plant briefly
+    pass_LR = {
+        'Hips': (4.0, 0.0, 0.0),
+        'Spine': (-3.0, 0.0, 0.0),
+        'Chest': (3.0, 0.0, 0.0),
+        'Thigh_L': (-5.0, 0.0, 0.0),
+        'Calf_L': (55.0, 0.0, 0.0),
+        'Foot_L': (5.0, 0.0, 0.0),
+        'Thigh_R': (30.0, 0.0, 0.0),
+        'Calf_R': (20.0, 0.0, 0.0),
+        'Foot_R': (-5.0, 0.0, 0.0),
+        'UpperArm_L': (6.0, 0.0, -6.0),
+        'ForeArm_L': (12.0, 0.0, 0.0),
+        'UpperArm_R': (-6.0, 0.0, 6.0),
+        'ForeArm_R': (12.0, 0.0, 0.0),
+        'Shoulder_L': (0.0, 0.0, -2.0),
+        'Shoulder_R': (0.0, 0.0, 2.0),
+        'Head': (0.0, 0.0, 0.0),
+    }
+    contact_R = {
+        'Hips': (2.0, 0.0, 3.0),
+        'Spine': (-2.0, 0.0, -2.0),
+        'Chest': (2.0, 0.0, 0.0),
+        'Thigh_R': (18.0, 0.0, -2.0),
+        'Calf_R': (8.0, 0.0, 0.0),
+        'Foot_R': (-12.0, 0.0, 0.0),
+        'Thigh_L': (-22.0, 0.0, 2.0),
+        'Calf_L': (45.0, 0.0, 0.0),
+        'Foot_L': (10.0, 0.0, 0.0),
+        'UpperArm_R': (-8.0, 0.0, 12.0),
+        'ForeArm_R': (10.0, 0.0, 0.0),
+        'UpperArm_L': (10.0, 0.0, -12.0),
+        'ForeArm_L': (15.0, 0.0, 0.0),
+        'Shoulder_L': (0.0, 0.0, 4.0),
+        'Shoulder_R': (0.0, 0.0, -4.0),
+        'Head': (0.0, 0.0, -3.0),
+    }
+    pass_RL = {
+        'Hips': (4.0, 0.0, 0.0),
+        'Spine': (-3.0, 0.0, 0.0),
+        'Chest': (3.0, 0.0, 0.0),
+        'Thigh_R': (-5.0, 0.0, 0.0),
+        'Calf_R': (55.0, 0.0, 0.0),
+        'Foot_R': (5.0, 0.0, 0.0),
+        'Thigh_L': (30.0, 0.0, 0.0),
+        'Calf_L': (20.0, 0.0, 0.0),
+        'Foot_L': (-5.0, 0.0, 0.0),
+        'UpperArm_R': (6.0, 0.0, 6.0),
+        'ForeArm_R': (12.0, 0.0, 0.0),
+        'UpperArm_L': (-6.0, 0.0, -6.0),
+        'ForeArm_L': (12.0, 0.0, 0.0),
+        'Shoulder_L': (0.0, 0.0, 2.0),
+        'Shoulder_R': (0.0, 0.0, -2.0),
+        'Head': (0.0, 0.0, 0.0),
+    }
+
+    # Hip bob via Hips location (bone local; Y along bone ≈ up for Hips which points up)
+    bob_up = {'Hips': (0.0, 0.012, 0.0)}
+    bob_dn = {'Hips': (0.0, -0.006, 0.0)}
+
+    _key_pose(arm, f1, contact_L, bob_dn)
+    _key_pose(arm, f_q, pass_LR, bob_up)
+    _key_pose(arm, f_h, contact_R, bob_dn)
+    _key_pose(arm, f_3q, pass_RL, bob_up)
+    _key_pose(arm, f_end, contact_L, bob_dn)
+
+    _set_fcurve_cycle(action)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"Created action {name}: frames=1..{frames} fps={fps} duration={frames/fps:.3f}s")
+    return action
+
+
+def create_idle_action(arm, frames=IDLE_FRAMES, fps=IDLE_FPS, name='Idle'):
+    """Subtle breath / weight-shift loop for AnimationMixer idle."""
+    scene = bpy.context.scene
+    scene.render.fps = fps
+
+    _ensure_pose_xyz(arm)
+    action = _new_action(arm, name)
+
+    f1, f_mid, f_end = 1, 1 + frames // 2, frames
+    rest = {
+        'Hips': (0.0, 0.0, 1.5),
+        'Spine': (0.0, 0.0, 0.0),
+        'Chest': (1.0, 0.0, 0.0),
+        'Head': (0.0, 0.0, 0.0),
+        'UpperArm_L': (2.0, 0.0, -4.0),
+        'UpperArm_R': (2.0, 0.0, 4.0),
+        'ForeArm_L': (8.0, 0.0, 0.0),
+        'ForeArm_R': (8.0, 0.0, 0.0),
+        'Thigh_L': (2.0, 0.0, 1.0),
+        'Thigh_R': (2.0, 0.0, -1.0),
+        'Calf_L': (4.0, 0.0, 0.0),
+        'Calf_R': (4.0, 0.0, 0.0),
+    }
+    inhale = {
+        'Hips': (0.0, 0.0, -1.5),
+        'Spine': (-1.5, 0.0, 0.0),
+        'Chest': (3.5, 0.0, 0.0),
+        'Head': (-1.0, 0.0, 0.0),
+        'UpperArm_L': (3.0, 0.0, -5.0),
+        'UpperArm_R': (3.0, 0.0, 5.0),
+        'ForeArm_L': (10.0, 0.0, 0.0),
+        'ForeArm_R': (10.0, 0.0, 0.0),
+        'Thigh_L': (2.5, 0.0, 1.5),
+        'Thigh_R': (1.5, 0.0, -1.5),
+        'Calf_L': (4.0, 0.0, 0.0),
+        'Calf_R': (4.0, 0.0, 0.0),
+    }
+    locs_rest = {'Hips': (0.0, 0.0, 0.0), 'Chest': (0.0, 0.0, 0.0)}
+    locs_inhale = {'Hips': (0.0, 0.008, 0.0), 'Chest': (0.0, 0.006, 0.0)}
+
+    _key_pose(arm, f1, rest, locs_rest)
+    _key_pose(arm, f_mid, inhale, locs_inhale)
+    _key_pose(arm, f_end, rest, locs_rest)
+
+    _set_fcurve_cycle(action)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"Created action {name}: frames=1..{frames} fps={fps} duration={frames/fps:.3f}s")
+    return action
+
+
+def stash_actions_on_nla(arm, actions):
+    """Push named actions onto NLA tracks so glTF ACTIONS export keeps clip names."""
+    if arm.animation_data is None:
+        arm.animation_data_create()
+    ad = arm.animation_data
+    while ad.nla_tracks:
+        ad.nla_tracks.remove(ad.nla_tracks[0])
+    for act in actions:
+        track = ad.nla_tracks.new()
+        track.name = act.name
+        start = int(act.frame_range[0])
+        strip = track.strips.new(act.name, start, act)
+        strip.action = act
+        strip.name = act.name
+    # Leave last action active for viewport; exporter still finds NLA + actions
+    if actions:
+        ad.action = actions[-1]
+
+
+def apply_party_clips(arm, meshes):
+    """Bind weights, create Idle+Walk, stash on NLA. Returns (idle, walk)."""
+    bind_meshes_auto_weights(arm, meshes)
+    idle = create_idle_action(arm)
+    walk = create_walk_action(arm)
+    stash_actions_on_nla(arm, [idle, walk])
+    return idle, walk

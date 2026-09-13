@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { npcsForZone } from './data';
-import { fitToHeight, loadModel, tintMeshes } from './assets';
+import { clipsFor, cloneModel, fitToHeight, loadModel, tintMeshes } from './assets';
+import { bindLoco, rememberBaseY, tickLoco, unbindLoco } from './locomotion';
 import type { JobId, MapZone, NpcDef, WorldInteractable } from './types';
 import { SELECT_ORDER } from './types';
 
@@ -37,6 +38,14 @@ const FORMATION_SLOTS: Record<JobId, { fwd: number; right: number }> = {
   guide: { fwd: -2.6, right: -1.1 },
   clerk: { fwd: -2.6, right: 1.1 },
   surgeon: { fwd: -2.8, right: 0.0 },
+};
+
+const PARTY_VISUAL: Record<JobId, { path: string; h: number; tint: number; color: number }> = {
+  clerk: { path: './models/characters/clerk.glb', h: 1.75, tint: 0x6a5a48, color: 0x6a5a48 },
+  sergeant: { path: './models/characters/sergeant.glb', h: 1.78, tint: 0x4a4858, color: 0x4a4858 },
+  convers: { path: './models/characters/convers.glb', h: 1.72, tint: 0x5a5040, color: 0x5a5040 },
+  guide: { path: './models/characters/guide.glb', h: 1.7, tint: 0x6a5038, color: 0x6a5038 },
+  surgeon: { path: './models/characters/surgeon.glb', h: 1.68, tint: 0x4a5848, color: 0x4a5848 },
 };
 const ORBIT_DIST = 24;
 const ORBIT_PITCH_MIN = 0.35;
@@ -146,6 +155,11 @@ export class World {
   private playerMesh!: THREE.Group;
   private npcMeshes = new Map<string, THREE.Group>();
   private followerMeshes = new Map<JobId, THREE.Group>();
+  /** Untinted party protos + Walk/Idle clips for leader swap (docs/bg-party-control.md). */
+  private partyVisuals = new Map<
+    JobId,
+    { proto: THREE.Group; clips: THREE.AnimationClip[]; h: number; tint: number }
+  >();
   /** Prop RMB targets (inspect / loot / use). */
   private interactables = new Map<string, { mesh: THREE.Object3D; def: WorldInteractable }>();
   private pathTarget: THREE.Vector3 | null = null;
@@ -209,7 +223,9 @@ export class World {
     else if (zone === 'act3_close') this.buildAct3Hub();
     else this.buildBaseHub();
 
-    this.playerMesh = this.makeCharacter(0x6a5a48, 0.55);
+    this.playerMesh = this.makeCharacter(PARTY_VISUAL[this.controlledId].color, 0.55);
+    this.playerMesh.userData.jobId = this.controlledId;
+    bindLoco(this.playerMesh, []);
     this.scene.add(this.playerMesh);
     this.setPlayerPos(this.playerX, this.playerZ);
 
@@ -251,17 +267,11 @@ export class World {
     }
 
     // Follower capsules (Art owns final meshes — placeholders only)
-    const followerColors: Record<JobId, number> = {
-      guide: 0x6a5038,
-      sergeant: 0x4a4858,
-      convers: 0x5a5040,
-      clerk: 0x6a5a48,
-      surgeon: 0x4a5848,
-    };
     for (const id of SELECT_ORDER) {
-      const f = this.makeCharacter(followerColors[id], 0.45);
+      const f = this.makeCharacter(PARTY_VISUAL[id].color, 0.45);
       f.visible = false;
       f.userData.jobId = id;
+      bindLoco(f, []);
       this.scene.add(f);
       this.followerMeshes.set(id, f);
     }
@@ -899,7 +909,7 @@ export class World {
 
     const take = (key: keyof typeof PATH) => byUrl.get(PATH[key])?.clone(true) ?? null;
 
-    await this.upgradeCharacter('player', take('player'), 1.75, 0x6a5a48);
+    // Leader visual comes from controlledId (tryHookPartyMeshes) — never force clerk.glb.
     await this.upgradeNpc('cellarer', take('cellarer'), 1.5, 0x6a6a58);
     await this.upgradeNpc('mairia', take('mairia'), 1.5, 0x6a5038);
     await this.upgradeNpc('parish', take('ramon'), 1.72, 0x5a5848);
@@ -1189,21 +1199,32 @@ export class World {
     this.addBoxCollider(x, z, 0.85, 0.75);
   }
 
-  private async upgradeCharacter(
-    _which: 'player',
-    model: THREE.Group | null,
-    height: number,
-    tint: number
-  ): Promise<void> {
-    if (!model) return;
-    fitToHeight(model, height);
-    tintMeshes(model, tint, 0.15);
+  /** Swap the click-to-move pawn to this job's GLB (or capsule). Previous face stays a follower. */
+  private applyLeaderVisual(id: JobId): void {
     const pos = this.playerMesh.position.clone();
     const rotY = this.playerMesh.rotation.y;
+    unbindLoco(this.playerMesh);
     this.scene.remove(this.playerMesh);
+
+    const art = this.partyVisuals.get(id);
+    const vis = PARTY_VISUAL[id];
+    let model: THREE.Group;
+    let clips: THREE.AnimationClip[] = [];
+    if (art) {
+      model = cloneModel(art.proto);
+      fitToHeight(model, art.h);
+      tintMeshes(model, art.tint, 0.15);
+      clips = art.clips;
+    } else {
+      model = this.makeCharacter(vis.color, 0.55);
+    }
+    const groundedY = model.position.y;
     this.playerMesh = model;
-    this.playerMesh.position.copy(pos);
+    this.playerMesh.position.set(pos.x, groundedY, pos.z);
     this.playerMesh.rotation.y = rotY;
+    this.playerMesh.userData.jobId = id;
+    bindLoco(this.playerMesh, clips);
+    rememberBaseY(this.playerMesh);
     this.scene.add(this.playerMesh);
   }
 
@@ -1970,24 +1991,31 @@ export class World {
     for (const j of jobs) {
       const art = await loadModel(j.path);
       if (!art) continue;
-      if (j.id === this.controlledId) {
-        await this.upgradeCharacter('player', art.clone(true), j.h, j.tint);
-      }
+      this.partyVisuals.set(j.id, {
+        proto: art,
+        clips: clipsFor(j.path),
+        h: j.h,
+        tint: j.tint,
+      });
       const follower = this.followerMeshes.get(j.id);
       if (follower) {
-        // Replace follower capsule with GLB clone when present
-        const mesh = art.clone(true);
+        const mesh = cloneModel(art);
         fitToHeight(mesh, j.h * 0.92);
         tintMeshes(mesh, j.tint, 0.12);
         mesh.visible = follower.visible;
         mesh.position.copy(follower.position);
         mesh.rotation.y = follower.rotation.y;
         mesh.userData.jobId = j.id;
+        unbindLoco(follower);
         this.scene.remove(follower);
+        bindLoco(mesh, clipsFor(j.path));
+        rememberBaseY(mesh);
         this.scene.add(mesh);
         this.followerMeshes.set(j.id, mesh);
       }
     }
+    // Re-apply leader so 1–5 / save face is that job's GLB, not leftover clerk.
+    this.applyLeaderVisual(this.controlledId);
   }
 
 
@@ -2164,13 +2192,26 @@ export class World {
     );
     head.position.y = ((1.15 * scale) / 0.5) * 0.55;
     head.castShadow = true;
-    g.add(body, head);
+    const legMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+    const legH = (0.32 * scale) / 0.5;
+    const legGeo = new THREE.BoxGeometry((0.09 * scale) / 0.5, legH, (0.11 * scale) / 0.5);
+    const legL = new THREE.Mesh(legGeo, legMat);
+    legL.name = 'leg_L';
+    legL.position.set((0.09 * scale) / 0.5, legH * 0.5, 0);
+    legL.castShadow = true;
+    const legR = new THREE.Mesh(legGeo, legMat);
+    legR.name = 'leg_R';
+    legR.position.set((-0.09 * scale) / 0.5, legH * 0.5, 0);
+    legR.castShadow = true;
+    g.add(body, head, legL, legR);
     return g;
   }
 
   setControlled(id: JobId, trail: JobId[]): void {
+    const needSwap = id !== this.controlledId || this.playerMesh.userData.jobId !== id;
     this.controlledId = id;
     this.followerTrail = trail;
+    if (needSwap) this.applyLeaderVisual(id);
     this.layoutFollowers(true);
   }
 
@@ -2310,9 +2351,11 @@ export class World {
       const idealX = leadX + fwdX * slot.fwd * scale + sideX * slot.right * scale;
       const idealZ = leadZ + fwdZ * slot.fwd * scale + sideZ * slot.right * scale;
 
+      const baseY = (mesh.userData.loco as { baseY?: number } | undefined)?.baseY ?? 0;
       if (snap) {
         const slid = this.softSlideFollower(idealX, idealZ, idealX, idealZ, sideX, sideZ);
-        mesh.position.set(slid.x, 0, slid.z);
+        mesh.position.set(slid.x, baseY, slid.z);
+        tickLoco(mesh, 0, dtClamped, this.moveSpeed);
         continue;
       }
 
@@ -2325,6 +2368,7 @@ export class World {
       if (missIdeal > 0.25 && canStep < 1e-4) {
         blockedThisFrame += 1;
         mesh.rotation.y = this.smoothYaw(mesh.rotation.y, facing, dtClamped, FOLLOW_YAW_LAG);
+        tickLoco(mesh, 0, dtClamped, this.moveSpeed);
         continue;
       }
 
@@ -2332,7 +2376,7 @@ export class World {
       const prevZ = mesh.position.z;
       mesh.position.x += (slid.x - mesh.position.x) * chase;
       mesh.position.z += (slid.z - mesh.position.z) * chase;
-      mesh.position.y = 0;
+      mesh.position.y = baseY;
       const movedX = mesh.position.x - prevX;
       const movedZ = mesh.position.z - prevZ;
       const moveSpeed = Math.hypot(movedX, movedZ) / dtClamped;
@@ -2341,6 +2385,7 @@ export class World {
       } else {
         mesh.rotation.y = this.smoothYaw(mesh.rotation.y, facing, dtClamped, FOLLOW_YAW_LAG);
       }
+      tickLoco(mesh, moveSpeed, dtClamped, this.moveSpeed);
     }
 
     if (blockedThisFrame > 0) this.formationBlockStreak += 1;
@@ -2350,7 +2395,9 @@ export class World {
   setPlayerPos(x: number, z: number): void {
     this.playerX = x;
     this.playerZ = z;
-    this.playerMesh.position.set(x * TILE, 0, z * TILE);
+    const loco = this.playerMesh.userData.loco as { baseY?: number } | undefined;
+    const y = loco?.baseY ?? this.playerMesh.position.y;
+    this.playerMesh.position.set(x * TILE, y, z * TILE);
     this.updateCamera();
   }
 
@@ -2860,8 +2907,7 @@ export class World {
     if (!this.pathTarget) {
       this.intentYaw = null;
       this.wallSlideTimer = 0;
-      this.layoutFollowers(false, dt);
-      this.updateCamera();
+      this.finishFrame(dt, 0);
       return;
     }
     const pos = this.playerMesh.position;
@@ -2877,8 +2923,7 @@ export class World {
       this.playerX = pos.x / TILE;
       this.playerZ = pos.z / TILE;
       this.onArrive?.();
-      this.layoutFollowers(false, dt);
-      this.updateCamera();
+      this.finishFrame(dt, 0);
       return;
     }
 
@@ -2893,8 +2938,7 @@ export class World {
       if (Math.abs(this.shortestYawDelta(this.playerMesh.rotation.y, this.intentYaw)) < 0.12) {
         this.stopTurnUntil = 0;
       }
-      this.layoutFollowers(false, dt);
-      this.updateCamera();
+      this.finishFrame(dt, 0);
       return;
     }
     this.stopTurnUntil = 0;
@@ -2920,7 +2964,13 @@ export class World {
     }
     this.playerX = pos.x / TILE;
     this.playerZ = pos.z / TILE;
+    const leaderSpeed = moved / Math.max(0.001, dt);
+    this.finishFrame(dt, leaderSpeed);
+  }
+
+  private finishFrame(dt: number, leaderSpeed: number): void {
     this.layoutFollowers(false, dt);
+    tickLoco(this.playerMesh, leaderSpeed, dt, this.moveSpeed);
     this.updateCamera();
   }
 
